@@ -203,6 +203,9 @@ class ApiTest {
         for (url in
             listOf(
                 "not a URL",
+                "http://recetaco.example/",
+                "http://192.168.1.10/",
+                "http://127.0.0.1.attacker.example/",
                 "https://host/api",
                 "https://host/?token=x",
                 "https://user:pass@host/",

@@ -80,6 +80,28 @@ async fn protect(
     mut request: axum::extract::Request,
     next: Next,
 ) -> Response {
+    // In unauthenticated development mode, never trust an arbitrary DNS hostname.
+    // Comparing Origin with Host alone does not prevent DNS rebinding.
+    if s.token.is_none() && s.oidc.is_none() {
+        let authority = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.parse::<axum::http::uri::Authority>().ok());
+        let trusted = authority.is_some_and(|a| {
+            let host = a.host().trim_start_matches('[').trim_end_matches(']');
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        });
+        if !trusted {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error":"Unauthenticated access requires a loopback Host"})),
+            )
+                .into_response();
+        }
+    }
     // Refuse cross-origin browser requests; native/API clients do not send Origin.
     if let Some(origin) = headers.get("origin") {
         let host = headers

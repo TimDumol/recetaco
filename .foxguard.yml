@@ -1,0 +1,4 @@
+secrets:
+  # Public, test-only signing fixture; never reuse it in a real issuer.
+  exclude_paths:
+    - server/tests/fixtures/test-only-rsa.pem

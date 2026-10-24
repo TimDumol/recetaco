@@ -15,6 +15,7 @@ async fn send(app: &Router, method: &str, path: &str, data: Value) -> (StatusCod
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .method(method)
                 .uri(path)
                 .header("content-type", "application/json")
@@ -180,6 +181,7 @@ async fn photos_resize_replace_remove_and_require_authentication() {
             .clone()
             .oneshot(
                 Request::builder()
+                    .header("host", "localhost")
                     .method("PUT")
                     .uri(&path)
                     .header("content-type", "image/jpeg")
@@ -196,7 +198,13 @@ async fn photos_resize_replace_remove_and_require_authentication() {
     }
     let response = app
         .clone()
-        .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .header("host", "localhost")
+                .uri(&path)
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(response.headers()["content-type"], "image/jpeg");
@@ -210,6 +218,7 @@ async fn photos_resize_replace_remove_and_require_authentication() {
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .method("PUT")
                 .uri(&path)
                 .body(Body::from("<svg><script>alert(1)</script></svg>"))
@@ -236,6 +245,7 @@ async fn photos_resize_replace_remove_and_require_authentication() {
     let response = guarded
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .method("PUT")
                 .uri("/api/recipes/1/photo")
                 .body(Body::from(jpeg()))

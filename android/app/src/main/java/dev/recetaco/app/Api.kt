@@ -92,7 +92,10 @@ class RecetacoApi(
     val baseUrl: String,
     private val token: String,
     private val client: OkHttpClient =
-        OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build(),
+        OkHttpClient.Builder()
+            .callTimeout(20, TimeUnit.SECONDS)
+            .followSslRedirects(false)
+            .build(),
     private val tokenProvider: (suspend () -> String)? = null,
 ) {
     companion object {
@@ -106,13 +109,14 @@ class RecetacoApi(
         val url = baseUrl.toHttpUrlOrNull()
         require(
             url != null &&
+                (url.isHttps || url.host in setOf("localhost", "127.0.0.1", "::1")) &&
                 url.encodedPath == "/" &&
                 url.query == null &&
                 url.fragment == null &&
                 url.username.isEmpty() &&
                 url.password.isEmpty()
         ) {
-            "Use a server origin, for example https://recetaco.example.com"
+            "Use an HTTPS server origin (HTTP is allowed only on loopback for development)"
         }
     }
 

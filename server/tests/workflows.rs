@@ -18,6 +18,7 @@ async fn send(app: &Router, method: &str, path: &str, body: Value) -> (StatusCod
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .method(method)
                 .uri(path)
                 .header("content-type", "application/json")
@@ -185,6 +186,7 @@ async fn auth_and_browser_origin_are_enforced() {
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .uri("/api/recipes")
                 .header("authorization", "Bearer secret-token")
                 .body(Body::empty())
@@ -299,4 +301,50 @@ async fn concurrent_additions_preserve_totals() {
     let (_, l) = send(&app, "GET", &format!("/api/lists/{}", l["id"]), Value::Null).await;
     assert_eq!(l["items"].as_array().unwrap().len(), 1);
     assert_eq!(l["items"][0]["quantity"], 12.0);
+}
+
+#[tokio::test]
+async fn unauthenticated_api_rejects_rebinding_hosts_even_with_matching_origin() {
+    let app = test_app(None);
+    for host in [
+        None,
+        Some("attacker.example:8080"),
+        Some("localhost.attacker.example"),
+        Some("192.168.1.2"),
+    ] {
+        for with_origin in [false, true] {
+            for path in ["/api/recipes", "/api/export", "/mcp"] {
+                let mut request = Request::builder()
+                    .method(if path == "/mcp" { "POST" } else { "GET" })
+                    .uri(path);
+                if let Some(host) = host {
+                    request = request.header("host", host);
+                    if with_origin {
+                        request = request.header("origin", format!("http://{host}"));
+                    }
+                }
+                let response = app
+                    .clone()
+                    .oneshot(request.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::FORBIDDEN, "{host:?} {path}");
+            }
+        }
+    }
+    for host in ["localhost:8080", "127.0.0.1:8080", "[::1]:8080"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/recipes")
+                    .header("host", host)
+                    .header("origin", format!("http://{host}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{host}");
+    }
 }

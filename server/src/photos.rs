@@ -2,14 +2,18 @@
 use crate::{AppState, Error, Result, db, model::Recipe};
 use axum::{
     Json,
-    body::Bytes,
-    extract::{Path, State},
-    http::header,
+    body::to_bytes,
+    extract::{Path, Request, State},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use image::{ImageFormat, ImageReader, Limits};
-use std::io::Cursor;
-static PHOTO_WORKER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+use std::{
+    io::Cursor,
+    sync::{Arc, LazyLock},
+};
+static PHOTO_WORKER: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(1)));
 pub fn prepare(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
@@ -41,15 +45,36 @@ pub fn prepare(bytes: &[u8]) -> Result<Vec<u8>> {
 pub async fn upload(
     State(s): State<AppState>,
     Path(id): Path<i64>,
-    bytes: Bytes,
+    request: Request,
 ) -> Result<Json<Recipe>> {
-    let _permit = PHOTO_WORKER
-        .acquire()
-        .await
-        .map_err(|_| Error::internal())?;
-    let jpeg = tokio::task::spawn_blocking(move || prepare(&bytes))
-        .await
-        .map_err(|_| Error::internal())??;
+    // Reject excess uploads before collecting their bodies into memory.
+    let permit = PHOTO_WORKER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| Error {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            message: "Photo processing is busy; retry shortly".into(),
+        })?;
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        to_bytes(request.into_body(), 5 * 1024 * 1024),
+    )
+    .await
+    .map_err(|_| Error {
+        status: StatusCode::REQUEST_TIMEOUT,
+        message: "Photo upload timed out".into(),
+    })?
+    .map_err(|_| Error {
+        status: StatusCode::PAYLOAD_TOO_LARGE,
+        message: "Photo body could not be read within the 5 MiB limit".into(),
+    })?;
+    let jpeg = tokio::task::spawn_blocking(move || {
+        // Blocking work continues after request cancellation; retain capacity until it ends.
+        let _permit = permit;
+        prepare(&bytes)
+    })
+    .await
+    .map_err(|_| Error::internal())??;
     Ok(Json(
         s.store.run(move |db| db::save_photo(db, id, jpeg)).await?,
     ))
@@ -72,4 +97,32 @@ pub async fn delete(
 ) -> Result<axum::http::StatusCode> {
     s.store.run(move |db| db::delete_photo(db, id)).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request};
+
+    #[tokio::test]
+    async fn busy_upload_is_rejected_before_body_collection_and_capacity_is_reusable() {
+        let state = AppState::new(db::Store::open(":memory:").unwrap(), None);
+        let permit = PHOTO_WORKER.clone().try_acquire_owned().unwrap();
+        let oversized = Request::new(Body::from(vec![0; 5 * 1024 * 1024 + 1]));
+        let error = upload(State(state.clone()), Path(1), oversized)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
+        drop(permit);
+        let oversized = Request::new(Body::from(vec![0; 5 * 1024 * 1024 + 1]));
+        let error = upload(State(state.clone()), Path(1), oversized)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status, StatusCode::PAYLOAD_TOO_LARGE);
+        let error = upload(State(state), Path(1), Request::new(Body::empty()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert!(PHOTO_WORKER.clone().try_acquire_owned().is_ok());
+    }
 }

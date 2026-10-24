@@ -12,6 +12,7 @@ async fn send(app: &Router, method: &str, path: &str, value: Value) -> (StatusCo
         .clone()
         .oneshot(
             Request::builder()
+                .header("host", "localhost")
                 .method(method)
                 .uri(path)
                 .header("content-type", "application/json")

@@ -1,5 +1,7 @@
 # Recetaco
 
+Security tooling: run `./scripts/install-security-hooks.sh` to install pinned Foxguard and enable code and secret scans before commits. See [the security review](docs/security-review.md) for findings and scan limitations.
+
 A small, self-hosted recipe planner with shopping lists. Rust + SQLite server, React browser client, native Kotlin/Jetpack Compose Android client, and built-in MCP. MIT licensed.
 
 ## Renaming an existing installation
@@ -51,7 +53,7 @@ export RECETACO_OIDC_AUDIENCE=https://recetaco.example.com
 ./target/release/recetaco
 ```
 
-Use Recetaco's public HTTPS address on your phone. The default listener is loopback; a reverse proxy can provide HTTPS and preserve the public Host header. No authentication gateway is required. A non-loopback listener requires OIDC or a development token. Without OIDC, local development remains available; Android exposes development connection options.
+Use Recetaco's public HTTPS address on your phone. The default listener is loopback; a reverse proxy can provide HTTPS and preserve the public Host header. No authentication gateway is required. A non-loopback listener requires OIDC or a development token. Unauthenticated local API access accepts only localhost or loopback IP Host headers; configure authentication before using a public reverse proxy. Without OIDC, local development remains available; Android exposes development connection options.
 
 | Environment variable | Default |
 | --- | --- |
@@ -76,7 +78,7 @@ cd android
 ./gradlew :app:assembleDebug :app:testDebugUnitTest
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Minimum Android version: 8.0/API 26. This is a native Compose application, not a WebView. Set the HTTPS server URL in Connection settings and sign in with Pocket ID. Debug APKs are for local installation; configure your own signing for distribution.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Minimum Android version: 8.0/API 26. This is a native Compose application, not a WebView. Set the HTTPS server URL in Connection settings and sign in with Pocket ID. Cleartext HTTP is restricted to localhost, 127.0.0.1, or ::1 for development. Debug APKs are for local installation; configure your own signing for distribution.
 
 ## MCP
 
@@ -152,7 +154,7 @@ Logging is additive: each POST/MCP `log_cook` creates a new occasion. Check hist
 
 ## Photos and memory
 
-Each recipe can have one uploaded photo. The clients resize photos before uploading. The server accepts JPEG/PNG/WebP, decodes with dimension/allocation limits, fits within 1200 × 1200, and re-encodes JPEG without the source metadata. Photo processing is serialized to limit concurrent memory spikes. Uploads are limited to 5 MiB and stored JPEGs to 2 MiB each; the decoder has a 32 MiB allocation limit. Processing can temporarily use more memory than idle recipe browsing.
+Each recipe can have one uploaded photo. The clients resize photos before uploading. The server accepts JPEG/PNG/WebP, decodes with dimension/allocation limits, fits within 1200 × 1200, and re-encodes JPEG without the source metadata. Photo processing is serialized to limit concurrent memory spikes. Excess concurrent uploads receive HTTP 429 before their bodies are buffered; body collection times out after 15 seconds. Uploads are limited to 5 MiB and stored JPEGs to 2 MiB each; the decoder has a 32 MiB allocation limit. Processing can temporarily use more memory than idle recipe browsing.
 
 Photos are stored in SQLite separately from recipe JSON and served through the authenticated API. Recipe list responses contain only a photo revision, not image bytes. Complete SQLite backups include photos; JSON exports contain recipe metadata and wishlist entries but omit image binaries. Existing databases gain the new tables automatically without dropping recipes.
 

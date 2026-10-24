@@ -8,6 +8,9 @@
 /android/local.properties
 /android/**/build/
 .env
+.env.*
+!.env.example
+/.security-venv/
 /web/test-results/
 /web/playwright-report/
 *.tsbuildinfo

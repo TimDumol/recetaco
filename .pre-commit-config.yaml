@@ -1,0 +1,17 @@
+repos:
+  - repo: local
+    hooks:
+      - id: foxguard
+        name: Foxguard code security
+        entry: foxguard --staged
+        language: python
+        additional_dependencies: [foxguard==0.14.1]
+        pass_filenames: false
+        always_run: true
+      - id: foxguard-secrets
+        name: Foxguard secrets
+        entry: foxguard secrets --staged
+        language: python
+        additional_dependencies: [foxguard==0.14.1]
+        pass_filenames: false
+        always_run: true
