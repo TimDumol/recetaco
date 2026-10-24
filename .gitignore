@@ -1,0 +1,15 @@
+/target/
+/web/node_modules/
+/web/dist/
+*.db
+*.db-shm
+*.db-wal
+/android/.gradle/
+/android/local.properties
+/android/**/build/
+.env
+/web/test-results/
+/web/playwright-report/
+*.tsbuildinfo
+/android/.kotlin/
+/artifacts/*.apk

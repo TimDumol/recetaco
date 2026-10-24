@@ -1,0 +1,13 @@
+{
+  "platform": "Linux x86_64",
+  "units": "MiB",
+  "scope": "Rust server only; release build; 100 recipes x 5 ingredients, 7 meals, 100 cook logs, 1 shopping list, 200 read requests",
+  "initial": {
+    "VmRSS": 6.3,
+    "VmHWM": 6.3
+  },
+  "after_workload": {
+    "VmRSS": 7.33,
+    "VmHWM": 7.33
+  }
+}

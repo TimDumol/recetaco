@@ -1,0 +1,1 @@
+The browser client bundles DM Sans and Libre Caslon Display fonts, licensed under the SIL Open Font License; their notices are included here. Other third-party dependencies retain their respective licenses, available in their upstream packages. The Gradle wrapper retains the Apache 2.0 notices in its scripts and JAR.
