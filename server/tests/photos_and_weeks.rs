@@ -282,7 +282,7 @@ async fn existing_v1_database_is_preserved_and_upgraded() {
             assert!(db::wishes(db, "2026-10-19")?.is_empty());
             assert_eq!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                3
+                4
             );
             Ok(())
         })

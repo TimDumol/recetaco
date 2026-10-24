@@ -49,6 +49,11 @@ fn cook_schema(update: bool) -> Value {
 fn tools() -> Value {
     let tool = |name: &str, description: &str, input: Value, read: bool| json!({"name":name,"description":description,"inputSchema":input,"annotations":{"readOnlyHint":read,"destructiveHint":!read,"openWorldHint":false}});
     json!({"tools":[
+        tool("list_inventory","Read approximate pantry quantities. Missing entries are unknown. Names and units match case-insensitively; use recipe ingredient names and units.",schema(json!({}),&[]),true),
+        tool("set_inventory","Set an absolute quantity (zero means out). Correct counts after cooking or untracked shopping. Does not record a price.",schema(json!({"name":string(),"unit":string(),"quantity":{"type":"number","minimum":0}}),&["name","unit","quantity"]),false),
+        tool("import_receipt","Import structured receipt lines into inventory and historical prices atomically. Reuse the same stable receipt_id for retries; changed contents with that ID are rejected. Read recipes/inventory first to map receipt labels to ingredient names. Convert pack contents into recipe units only when known; do not guess weights or prices. total_cost is the line total after discounts, null if unknown. Only include food to track. currency is a three-letter code; purchased_on is YYYY-MM-DD.",schema(json!({"receipt_id":string(),"purchased_on":string(),"currency":string(),"items":{"type":"array","items":schema(json!({"name":string(),"quantity":number(),"unit":string(),"total_cost":{"type":["number","null"],"minimum":0}}),&["name","quantity","unit","total_cost"])}}),&["receipt_id","purchased_on","currency","items"]),false),
+        tool("list_purchase_history","Read historical receipt prices, dates and quantities.",schema(json!({}),&[]),true),
+        tool("estimate_recipe_cost","Estimate recipe and per-serving costs from latest matching ingredient/unit purchase prices. Missing prices are unknown; totals are partial and separated by currency.",schema(json!({"recipe_id":id()}),&["recipe_id"]),true),
         tool("list_recipes","List saved recipes, including IDs and ingredients.",schema(json!({}),&[]),true),
         tool("get_recipe","Get a saved recipe.",schema(json!({"recipe_id":id()}),&["recipe_id"]),true),
         tool("create_recipe","Save a recipe with structured ingredient quantities and units.",recipe_schema(),false),
@@ -60,13 +65,13 @@ fn tools() -> Value {
         tool("list_weekly_wishlist","List recipes wished for a week; any YYYY-MM-DD date identifies its Monday-to-Sunday week.",schema(json!({"week":string()}),&["week"]),true),
         tool("add_to_weekly_wishlist","Add a recipe to a weekly wishlist without choosing a day or meal slot.",schema(json!({"recipe_id":id(),"week":string(),"servings":number()}),&["recipe_id","week","servings"]),false),
         tool("mark_wishlist_cooked","Mark a weekly wishlist entry as cooked or undo that mark.",schema(json!({"wish_id":id(),"cooked":{"type":"boolean"}}),&["wish_id","cooked"]),false),
-        tool("add_week_to_shopping_list","Add all uncooked wishlist meals' scaled ingredients for a week. Additive: do not retry blindly.",schema(json!({"list_id":id(),"week":string()}),&["list_id","week"]),false),
+        tool("add_week_to_shopping_list","Add all uncooked wishlist meals' scaled ingredients for a week, subtracting known stock once per list. Additive: do not retry blindly.",schema(json!({"list_id":id(),"week":string()}),&["list_id","week"]),false),
         tool("list_meals","List dated meal plan entries.",schema(json!({}),&[]),true),
         tool("plan_meal","Schedule a saved recipe for YYYY-MM-DD. Slot: breakfast, lunch, dinner or snack.",schema(json!({"recipe_id":id(),"date":string(),"servings":number(),"slot":string()}),&["recipe_id","date","servings"]),false),
         tool("list_shopping_lists","List shopping lists and their IDs.",schema(json!({}),&[]),true),
         tool("create_shopping_list","Create a named shopping list.",schema(json!({"name":string()}),&["name"]),false),
         tool("get_shopping_list","Read a shopping list and checked state of its items.",schema(json!({"list_id":id()}),&["list_id"]),true),
-        tool("add_recipe_to_shopping_list","Add scaled ingredients to a list. Matching names and units merge into unchecked items. Each call adds quantities again; do not retry without checking the list.",schema(json!({"list_id":id(),"recipe_id":id(),"servings":number()}),&["list_id","recipe_id","servings"]),false),
+        tool("add_recipe_to_shopping_list","Add scaled ingredients to a list, subtracting known inventory once per list. Unknown names/units are included in full. Pantry counts are not consumed. Matching names and units merge into unchecked items. Each call adds quantities again; do not retry without checking the list.",schema(json!({"list_id":id(),"recipe_id":id(),"servings":number()}),&["list_id","recipe_id","servings"]),false),
         tool("add_shopping_item","Add an item to a shopping list; merge matching unchecked names and units.",schema(json!({"list_id":id(),"name":string(),"quantity":number(),"unit":string()}),&["list_id","name","quantity"]),false),
         tool("check_shopping_item","Set an item's checked state.",schema(json!({"list_id":id(),"item_id":id(),"checked":{"type":"boolean"}}),&["list_id","item_id","checked"]),false)
     ]})
@@ -87,6 +92,11 @@ fn decode<T: serde::de::DeserializeOwned>(v: Value) -> Result<T> {
 }
 fn call(db: &mut rusqlite::Connection, name: &str, args: Value) -> Result<Value> {
     Ok(match name {
+        "list_inventory" => json!(crate::inventory::items(db)?),
+        "set_inventory" => json!(crate::inventory::set(db, decode(args)?)?),
+        "import_receipt" => crate::inventory::import(db, decode(args)?)?,
+        "list_purchase_history" => json!(crate::inventory::history(db)?),
+        "estimate_recipe_cost" => crate::inventory::cost(db, int(&args, "recipe_id")?)?,
         "list_recipes" => json!(db::recipes(db)?),
         "get_recipe" => json!(db::recipe(db, int(&args, "recipe_id")?)?),
         "create_recipe" => json!(db::save_recipe(db, None, decode(args)?)?),

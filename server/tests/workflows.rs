@@ -226,7 +226,7 @@ async fn mcp_initialize_discover_and_write() {
         json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
     )
     .await;
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 20);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 25);
     let (_,r)=send(&app,"POST","/mcp",json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_recipe","arguments":recipe()}})).await;
     assert_eq!(r["result"]["isError"], false);
     let (_, recipes) = send(&app, "GET", "/api/recipes", Value::Null).await;

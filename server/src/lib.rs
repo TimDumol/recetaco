@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod db;
+pub mod inventory;
 mod mcp;
 pub mod model;
 pub mod photos;
@@ -183,6 +184,7 @@ fn constant_eq(a: &[u8], b: &[u8]) -> bool {
 }
 pub fn app(state: AppState, web_dir: &str) -> Router {
     let api = Router::new()
+        .merge(inventory::routes())
         .route("/api/recipes", get(all_recipes).post(create_recipe))
         .route(
             "/api/recipes/{id}",
@@ -355,7 +357,7 @@ async fn add_recipe(
     ))
 }
 async fn export(State(s): State<AppState>) -> Result<Json<Value>> {
-    Ok(Json(s.store.run(|db| { let lists=db::lists(db)?.into_iter().map(|l|db::list(db,l.id)).collect::<Result<Vec<_>>>()?; Ok(json!({"version":3,"cooks":db::all_cooks(db)?,"recipes":db::recipes(db)?,"meals":db::meals(db)?,"wishes":db::all_wishes(db)?,"lists":lists})) }).await?))
+    Ok(Json(s.store.run(|db| { let lists=db::lists(db)?.into_iter().map(|l|db::list(db,l.id)).collect::<Result<Vec<_>>>()?; Ok(json!({"version":4,"inventory":crate::inventory::items(db)?,"purchases":crate::inventory::history(db)?,"receipts":crate::inventory::receipts(db)?,"cooks":db::all_cooks(db)?,"recipes":db::recipes(db)?,"meals":db::meals(db)?,"wishes":db::all_wishes(db)?,"lists":lists})) }).await?))
 }
 
 async fn all_wishes(

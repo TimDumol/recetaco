@@ -20,7 +20,11 @@ impl Store {
             CREATE TABLE IF NOT EXISTS recipe_ratings(recipe_id INTEGER PRIMARY KEY REFERENCES recipes(id) ON DELETE CASCADE, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5));
             CREATE TABLE IF NOT EXISTS cooks(id INTEGER PRIMARY KEY, recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE, cooked_on TEXT NOT NULL, rating INTEGER CHECK(rating BETWEEN 1 AND 5), cook_name TEXT NOT NULL, went_well TEXT NOT NULL, to_improve TEXT NOT NULL, notes TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS cooks_recipe_date ON cooks(recipe_id,cooked_on DESC,id DESC);
-            PRAGMA user_version=3;")?;
+            CREATE TABLE IF NOT EXISTS inventory(name TEXT NOT NULL, unit TEXT NOT NULL, quantity REAL NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(name,unit));
+            CREATE TABLE IF NOT EXISTS receipts(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS purchases(id INTEGER PRIMARY KEY, receipt_id TEXT NOT NULL REFERENCES receipts(id), name TEXT NOT NULL, unit TEXT NOT NULL, quantity REAL NOT NULL, total_cost REAL, currency TEXT NOT NULL, purchased_on TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS stock_used(list_id INTEGER REFERENCES lists(id) ON DELETE CASCADE, name TEXT, unit TEXT, quantity REAL NOT NULL, PRIMARY KEY(list_id,name,unit));
+            PRAGMA user_version=4;")?;
         Ok(Self(Arc::new(Mutex::new(db))))
     }
     pub async fn run<T, F>(&self, f: F) -> Result<T>
@@ -233,8 +237,8 @@ pub fn delete_list(db: &Connection, id: i64) -> Result<()> {
     }
     Ok(())
 }
-fn merge_item(db: &Connection, list_id: i64, i: &Ingredient) -> Result<()> {
-    // Deliberately conservative: no guessed unit conversions or pantry deductions.
+pub(crate) fn merge_item(db: &Connection, list_id: i64, i: &Ingredient) -> Result<()> {
+    // Merge only matching names and units; pantry allocation happens before this.
     let existing: Option<(i64,f64)> = db.query_row("SELECT id,quantity FROM items WHERE list_id=? AND checked=0 AND lower(trim(name))=lower(trim(?)) AND lower(trim(unit))=lower(trim(?)) ORDER BY id LIMIT 1",params![list_id,i.name,i.unit],|r| Ok((r.get(0)?,r.get(1)?))).optional()?;
     if let Some((id, qty)) = existing {
         let total = qty + i.quantity;
@@ -269,7 +273,7 @@ pub fn add_recipe(
     for mut i in r.data.ingredients {
         i.quantity *= servings / r.data.servings;
         validate_ingredient(&mut i)?;
-        merge_item(&tx, list_id, &i)?;
+        crate::inventory::shopping_item(&tx, list_id, &i)?;
     }
     tx.commit()?;
     list(db, list_id)
@@ -388,7 +392,7 @@ pub fn add_week(db: &mut Connection, list_id: i64, week: &str) -> Result<ListDet
         for mut i in r.data.ingredients {
             i.quantity *= wish.data.servings / r.data.servings;
             validate_ingredient(&mut i)?;
-            merge_item(&tx, list_id, &i)?;
+            crate::inventory::shopping_item(&tx, list_id, &i)?;
         }
     }
     tx.commit()?;

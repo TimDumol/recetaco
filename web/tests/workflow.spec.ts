@@ -296,3 +296,45 @@ test("recipe ratings and cook history persist and recalculate after edits", asyn
       .getByText("Average cook rating: 5/5", { exact: true }),
   ).toBeVisible();
 });
+
+test("inventory counts can be corrected without losing receipt prices", async ({
+  page,
+  request,
+}, info) => {
+  const name = `inventory rice ${info.project.name}`;
+  const imported = await request.post("/api/receipts", {
+    data: {
+      receipt_id: `inventory-${info.project.name}`,
+      purchased_on: "2026-10-24",
+      currency: "EUR",
+      items: [{ name, quantity: 1000, unit: "g", total_cost: 2.5 }],
+    },
+  });
+  expect(imported.ok()).toBeTruthy();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Inventory", exact: true }).click();
+  const row = page
+    .locator("form")
+    .filter({ has: page.getByText(name, { exact: true }) });
+  await expect(row.getByRole("spinbutton")).toHaveValue("1000");
+  await row.getByRole("spinbutton").fill("250");
+  await row.getByRole("button", { name: "Save", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get("/api/inventory")).json()).find(
+          (s: { name: string }) => s.name === name,
+        )?.quantity,
+    )
+    .toBe(250);
+  await row.getByRole("button", { name: "Out", exact: true }).click();
+  await expect(row.getByRole("spinbutton")).toHaveValue("0");
+  await row.getByRole("button", { name: "Forget", exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await expect(
+    page
+      .locator(".inventory-row")
+      .filter({ hasText: name })
+      .getByText("2.50 EUR", { exact: true }),
+  ).toBeVisible();
+});

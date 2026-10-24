@@ -1,3 +1,4 @@
+import { Inventory, RecipeCost } from "./inventory";
 import {
   CookForm,
   CookHistory,
@@ -48,7 +49,7 @@ import "@fontsource/dm-sans/latin-700.css";
 import "@fontsource/libre-caslon-display/latin-400.css";
 import "./styles.css";
 
-type Page = "recipes" | "plan" | "shopping";
+type Page = "recipes" | "plan" | "shopping" | "inventory";
 type Dialog =
   | { kind: "edit"; recipe?: Recipe }
   | { kind: "recipe"; recipe: Recipe }
@@ -210,6 +211,7 @@ function App() {
   );
   const upcoming = meals.filter((m) => m.date >= today());
   const nav = [
+    { id: "inventory" as const, label: "Inventory", icon: Leaf },
     { id: "recipes" as const, label: "Recipe book", icon: BookOpen },
     { id: "plan" as const, label: "Meal plan", icon: CalendarDays },
     { id: "shopping" as const, label: "Shopping lists", icon: ShoppingBasket },
@@ -283,36 +285,42 @@ function App() {
                 ? "Keep the good ones."
                 : page === "plan"
                   ? "A week worth looking forward to."
-                  : "A little list. A lighter week."}
+                  : page === "inventory"
+                    ? "A little pantry peace."
+                    : "A little list. A lighter week."}
             </h1>
             <p>
               {page === "recipes"
                 ? "Your favorite recipes, all in one happy place."
                 : page === "plan"
                   ? "A few meals you’d like to cook, whenever the mood takes you."
-                  : "Everything you need, ready when you are."}
+                  : page === "inventory"
+                    ? "Approximate counts and the prices you paid."
+                    : "Everything you need, ready when you are."}
             </p>
           </div>
-          <button
-            className="primary"
-            disabled={busy || !ready}
-            onClick={() =>
-              setDialog(
-                page === "recipes"
-                  ? { kind: "edit" }
-                  : page === "plan"
-                    ? { kind: "wish" }
-                    : { kind: "list" },
-              )
-            }
-          >
-            <Plus size={18} />
-            {page === "recipes"
-              ? "New recipe"
-              : page === "plan"
-                ? "Add to week"
-                : "New list"}
-          </button>
+          {page !== "inventory" && (
+            <button
+              className="primary"
+              disabled={busy || !ready}
+              onClick={() =>
+                setDialog(
+                  page === "recipes"
+                    ? { kind: "edit" }
+                    : page === "plan"
+                      ? { kind: "wish" }
+                      : { kind: "list" },
+                )
+              }
+            >
+              <Plus size={18} />
+              {page === "recipes"
+                ? "New recipe"
+                : page === "plan"
+                  ? "Add to week"
+                  : "New list"}
+            </button>
+          )}
         </header>
         {error && !dialog && (
           <div role="alert" className="alert">
@@ -331,6 +339,8 @@ function App() {
             <LoaderCircle className="spin" />
             <h2>Opening your kitchen…</h2>
           </div>
+        ) : page === "inventory" ? (
+          <Inventory />
         ) : page === "recipes" ? (
           <>
             <section className="kitchen-banner">
@@ -902,6 +912,7 @@ function App() {
             />
           ) : dialog.kind === "recipe" ? (
             <div className="recipe-detail">
+              <RecipeCost recipe={dialog.recipe} />
               {!!dialog.recipe.photo_version && (
                 <RecipePhoto recipe={dialog.recipe} className="detail-photo" />
               )}
@@ -1546,7 +1557,8 @@ function ShoppingForm({
     >
       <p className="muted">
         From <strong>{recipe.title}</strong>. Ingredients scale to your chosen
-        servings.
+        servings. Known inventory reduces quantities; untracked ingredients are
+        included in full.
       </p>
       <label>
         Shopping list
@@ -1769,7 +1781,8 @@ function WeekShoppingForm({
     >
       <p className="muted">
         Add ingredients from every uncooked meal in this week’s wishlist, scaled
-        to its servings. Cooked meals are skipped.
+        to its servings. Cooked meals are skipped. Known inventory reduces
+        quantities; untracked ingredients are included in full.
       </p>
       <label>
         Shopping list

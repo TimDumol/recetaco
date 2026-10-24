@@ -229,7 +229,7 @@ async fn logs_and_ratings_export_and_cascade_while_metadata_edits_preserve_them(
     assert_eq!(r["rating"], 5);
     assert_eq!(r["cook_count"], 1);
     let (_, export) = send(&app, "GET", "/api/export", Value::Null).await;
-    assert_eq!(export["version"], 3);
+    assert_eq!(export["version"], 4);
     assert_eq!(export["cooks"][0]["notes"], "Remember this");
     assert_eq!(export["recipes"][0]["average_cook_rating"], 4.0);
     send(&app, "DELETE", &path, Value::Null).await;

@@ -1433,3 +1433,29 @@ form h3 {
   gap: 20px;
   margin-top: 12px;
 }
+
+.inventory-page {
+  max-width: 1000px;
+}
+.inventory-page > p {
+  line-height: 1.6;
+}
+.inventory-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border, #ddd);
+}
+.inventory-row label {
+  display: grid;
+  gap: 5px;
+}
+.inventory-row input {
+  width: 160px;
+  max-width: 100%;
+}
+.inventory-row strong {
+  min-width: 140px;
+}
