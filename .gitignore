@@ -16,3 +16,4 @@
 *.tsbuildinfo
 /android/.kotlin/
 /artifacts/*.apk
+/.pocket-id-api-key

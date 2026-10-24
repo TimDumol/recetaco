@@ -16,9 +16,9 @@ Use each account’s stable OIDC `sub` value (the Pocket ID user ID), rather tha
 
 ## Provider requirements
 
-Use a Pocket ID version supporting **RFC 9068 JWT access tokens** and **RFC 8707 resource indicators / custom API audiences**. Older deployments issuing opaque access tokens without an API audience need an upgrade; this integration deliberately does not accept an ID token as an API bearer token. Recetaco supports RS256/384/512, ES256/384, and EdDSA signing keys.
+Use a Pocket ID version supporting **signed JWT access tokens** and **RFC 8707 resource indicators / custom API audiences**. Pocket ID 2.12 uses the `JWT` header type; newer versions use RFC 9068 `at+jwt`. Both are accepted only with the configured API resource audience. Older deployments issuing opaque access tokens without an API audience need an upgrade; this integration deliberately does not accept an ID token as an API bearer token. Recetaco supports RS256/384/512, ES256/384, and EdDSA signing keys.
 
-The API validates the `at+jwt` token type, signature against discovered JWKS, exact issuer and resource audience, subject, expiration, and optional not-before time. Signing keys are cached for five minutes, with refresh attempts for an unknown key limited to once per 30 seconds. No provider call is made for every API request.
+The API validates the `at+jwt` or `JWT` token type, signature against discovered JWKS, exact issuer and resource audience, subject, expiration, and optional not-before time. Signing keys are cached for five minutes, with refresh attempts for an unknown key limited to once per 30 seconds. No provider call is made for every API request.
 
 ## Register Recetaco in Pocket ID
 

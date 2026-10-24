@@ -1,0 +1,9 @@
+.git
+.pocket-id-api-key
+.env*
+target
+web/node_modules
+web/dist
+android
+*.db*
+deploy

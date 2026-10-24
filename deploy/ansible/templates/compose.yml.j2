@@ -1,0 +1,21 @@
+services:
+  recetaco:
+    image: {{ recetaco_image }}
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - /opt/recetaco/data:/data
+    mem_limit: 256m
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks:
+      caddy-edge:
+        aliases: [recetaco]
+networks:
+  caddy-edge:
+    external: true

@@ -1,0 +1,64 @@
+---
+- name: Deploy Recetaco behind the existing shared Caddy
+  hosts: recetaco
+  become: true
+  tasks:
+    - name: Require a preloaded image
+      ansible.builtin.command:
+        argv: [docker, image, inspect, '{{ recetaco_image }}']
+      changed_when: false
+    - name: Verify the existing shared edge network
+      ansible.builtin.command:
+        argv: [docker, network, inspect, caddy-edge]
+      changed_when: false
+    - name: Create deployment directory
+      ansible.builtin.file:
+        path: /opt/recetaco
+        state: directory
+        mode: '0750'
+    - name: Preserve persistent SQLite storage
+      ansible.builtin.file:
+        path: /opt/recetaco/data
+        state: directory
+        owner: '65532'
+        group: '65532'
+        mode: '0700'
+    - name: Install application configuration
+      ansible.builtin.template:
+        src: '{{ item.src }}'
+        dest: '/opt/recetaco/{{ item.dest }}'
+        mode: '{{ item.mode }}'
+      loop:
+        - {src: compose.yml.j2, dest: compose.yml, mode: '0644'}
+        - {src: env.j2, dest: .env, mode: '0600'}
+    - name: Start only Recetaco
+      ansible.builtin.command:
+        argv: [docker, compose, -p, recetaco, -f, /opt/recetaco/compose.yml, up, -d, --wait, --wait-timeout, '120']
+      changed_when: true
+    - name: Add Recetaco to the shared Caddy imports
+      ansible.builtin.template:
+        src: recetaco.caddy.j2
+        dest: /opt/caddy/sites-enabled/recetaco.caddy
+        mode: '0644'
+    - name: Validate the complete shared Caddy configuration
+      ansible.builtin.command:
+        argv: [docker, exec, app-caddy-1, caddy, validate, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+      changed_when: false
+    - name: Reload the shared Caddy without restarting it
+      ansible.builtin.command:
+        argv: [docker, exec, app-caddy-1, caddy, reload, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+      changed_when: true
+    - name: Verify application authentication configuration inside the container
+      ansible.builtin.command:
+        argv: [docker, compose, -p, recetaco, -f, /opt/recetaco/compose.yml, exec, -T, recetaco, curl, -fsS, 'http://127.0.0.1:8080/auth/config']
+      changed_when: false
+      register: auth_config
+      failed_when: (auth_config.stdout | from_json).mode != 'oidc'
+    - name: Verify public health
+      ansible.builtin.uri:
+        url: https://recetaco.timdumol.com/health
+        status_code: 200
+      register: public_health
+      retries: 12
+      delay: 5
+      until: public_health.status == 200

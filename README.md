@@ -184,3 +184,7 @@ On Linux, after a release build, run `python3 scripts/measure-memory.py` to meas
 ### Initial memory measurement
 
 The included [smoke measurement](artifacts/memory.json) records RSS for the Linux x86_64 release server in local development mode (OIDC disabled). It is not a capacity test and excludes client applications.
+
+## Production deployment
+
+See [Docker, Ansible, shared Caddy, and Pocket ID deployment](deploy/README.md).

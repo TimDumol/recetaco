@@ -151,11 +151,12 @@ impl Oidc {
             return Err(AuthError::Invalid);
         }
         let header = decode_header(token).map_err(|_| AuthError::Invalid)?;
-        // RFC 9068 prevents an ID token or a Pocket ID session token being used as an API credential.
+        // Pocket ID 2.12 uses JWT; newer releases use the RFC 9068 at+jwt type.
+        // The API resource audience below separates both from client-audienced ID tokens.
         if !header
             .typ
             .as_deref()
-            .is_some_and(|t| t.eq_ignore_ascii_case("at+jwt"))
+            .is_some_and(|t| t.eq_ignore_ascii_case("at+jwt") || t.eq_ignore_ascii_case("JWT"))
             || !matches!(
                 header.alg,
                 Algorithm::RS256

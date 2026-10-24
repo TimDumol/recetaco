@@ -124,6 +124,18 @@ async fn valid_access_tokens_work_but_id_tokens_and_wrong_claims_fail() {
         .0,
         StatusCode::OK
     );
+    // Pocket ID 2.12 signs API access tokens with typ=JWT. The resource
+    // audience must still match; ID tokens target the browser/native client.
+    assert_eq!(
+        send(
+            &app,
+            "/api/recipes",
+            Some(&token(&p.issuer, json!({}), "JWT"))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
     for (patch, typ) in [
         (json!({"iss":"https://different.example"}), "at+jwt"),
         (json!({"aud":"another-api"}), "at+jwt"),
@@ -131,7 +143,11 @@ async fn valid_access_tokens_work_but_id_tokens_and_wrong_claims_fail() {
         (json!({"nbf":9_999_999_999_u64}), "at+jwt"),
         (json!({"sub":""}), "at+jwt"),
         (json!({"aud":"web-client"}), "JWT"),
-        (json!({}), "JWT"),
+        (json!({"aud":"android-client"}), "JWT"),
+        (json!({"aud":"web-client"}), "at+jwt"),
+        (json!({"iss":"https://different.example"}), "JWT"),
+        (json!({"exp":1}), "JWT"),
+        (json!({}), "access-token"),
         (json!({"exp":null}), "at+jwt"),
     ] {
         assert_eq!(

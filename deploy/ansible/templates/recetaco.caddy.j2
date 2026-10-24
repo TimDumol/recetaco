@@ -1,0 +1,9 @@
+recetaco.timdumol.com {
+    encode zstd gzip
+    header {
+        -Server
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+    }
+    reverse_proxy recetaco:8080
+}
