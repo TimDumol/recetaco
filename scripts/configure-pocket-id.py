@@ -8,14 +8,24 @@ import urllib.error
 BASE = 'https://auth.aries.timdumol.com'
 ORIGIN = 'https://recetaco.timdumol.com'
 SUBJECTS = ['6aca99a5-7ec4-4252-b94e-a0e53805e983', 'adaec307-5a7b-4c16-b854-2fe3752e6ea3']
+class NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Never forward the Pocket ID API key to a redirect destination."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "Redirect refused", headers, fp)
+
+
+HTTP = urllib.request.build_opener(NoRedirects())
 KEY = (Path(__file__).resolve().parent.parent / '.pocket-id-api-key').read_text().strip()
 
 def request(method, path, body=None):
+    if not path.startswith('/api/') or any(c in path for c in ('\\', '\r', '\n', '#')):
+        raise ValueError('Expected a Pocket ID API path')
     req = urllib.request.Request(BASE + path,
         data=None if body is None else json.dumps(body).encode(), method=method,
         headers={'X-API-KEY': KEY, 'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with HTTP.open(req, timeout=30) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 404 and method == 'GET':
@@ -45,6 +55,7 @@ permission = next(p['id'] for p in api['permissions'] if p['key'] == 'recetaco:a
 for client_id, name, callback, logout in [
     ('recetaco-web', 'Recetaco Browser', ORIGIN + '/auth/callback', [ORIGIN]),
     ('recetaco-android', 'Recetaco Android', 'dev.recetaco.app:/oauth2redirect', []),
+    ('recetaco-chatgpt', 'Recetaco ChatGPT', 'https://chatgpt.com/connector_platform_oauth_redirect', []),
 ]:
     existing = request('GET', '/api/oidc/clients/' + client_id)
     payload = dict(name=name, description='Recetaco shared household kitchen',
@@ -64,9 +75,12 @@ for client_id, name, callback, logout in [
     assert [g['id'] for g in verified['allowedUserGroups']] == [group['id']]
     assert verified['callbackURLs'] == [callback]
     # Only verified household-restricted clients receive delegated kitchen access.
-    request('PUT', '/api/api-access/' + client_id,
-        {'userDelegatedPermissionIds': [permission], 'clientPermissionIds': []})
-    grants = request('GET', '/api/api-access/' + client_id)
+    request('PUT', '/api/apis/' + api['id'] + '/clients/' + client_id,
+        {'userDelegatedAccess': True, 'clientAccess': False,
+         'userDelegatedPermissionIds': [permission], 'clientPermissionIds': []})
+    grants = next(g for g in request('GET', '/api/api-access/' + client_id + '/apis')
+        if g['api']['id'] == api['id'])
+    assert grants['userDelegatedAccess'] and not grants['clientAccess']
     assert grants['userDelegatedPermissionIds'] == [permission]
     assert grants['clientPermissionIds'] == []
     print('Verified household-restricted PKCE client:', client_id)

@@ -4,10 +4,16 @@ export interface Ingredient {
   quantity: number;
   unit: string;
 }
+export interface RecipeStep {
+  text: string;
+  ingredients: { ingredient: number; quantity?: number | null }[];
+  after: number[];
+}
 export interface RecipeInput {
   title: string;
   servings: number;
   instructions: string;
+  steps?: RecipeStep[];
   source_url: string;
   ingredients: Ingredient[];
 }

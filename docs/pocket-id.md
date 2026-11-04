@@ -62,6 +62,45 @@ Custom URI callbacks use PKCE to protect intercepted authorization codes. A futu
 
 ## MCP and other API clients
 
+### Connect the production kitchen to ChatGPT
+
+Run `python3 scripts/configure-pocket-id.py` with a valid administrative API
+key in the ignored `.pocket-id-api-key` file. It provisions `recetaco-chatgpt`
+as a public S256 PKCE client, restricts it to `recetaco-household`, and grants
+delegated access to the Recetaco API. No client secret is used. The script also
+reconciles the browser/Android clients and the two household group members.
+
+In ChatGPT, open **Plugins → + → Add custom MCP server** (older interfaces use
+**Settings → Apps → Advanced settings → Developer mode**, then **Create**).
+Enter:
+
+| Field | Value |
+| --- | --- |
+| Name | Recetaco |
+| Description | Manage our shared recipes, meal plans, and shopping lists. |
+| MCP server URL | `https://recetaco.timdumol.com/mcp` |
+| Authentication | OAuth |
+| OAuth client ID | `recetaco-chatgpt` |
+| OAuth client secret | Leave empty (public PKCE client) |
+
+Use the predefined/manual OAuth client option if offered. Complete the Pocket
+ID passkey sign-in and consent, then enable Recetaco in a chat and try
+“Show my recipes.” If asked for scopes, use `openid profile offline_access`.
+
+The registered callback is
+`https://chatgpt.com/connector_platform_oauth_redirect`. Pocket ID currently
+advertises RFC 9207 issuer identification, which allows ChatGPT to use this
+stable callback. Always compare it with the exact redirect URI shown in
+ChatGPT's MCP management page; if ChatGPT displays a different callback, add
+that exact URI to the Pocket ID client before connecting. Do not use wildcard
+redirects or the browser/Android client IDs.
+
+Connection steps and callback requirements:
+[OpenAI connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+and [OAuth guide](https://developers.openai.com/plugins/build/auth).
+
+### Other MCP clients
+
 `POST /mcp` requires a **Pocket ID access token for the same Recetaco API audience**. The old shared server token does not bypass OIDC.
 
 An unauthenticated request returns HTTP 401 with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource`. That document advertises the Recetaco resource and Pocket ID authorization server. Register an OAuth client in Pocket ID for your MCP client and grant it access to the Recetaco API. Configure that client ID/callback with the MCP client if it supports pre-registered OAuth clients.

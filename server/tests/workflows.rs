@@ -226,7 +226,7 @@ async fn mcp_initialize_discover_and_write() {
         json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
     )
     .await;
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 25);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 27);
     let (_,r)=send(&app,"POST","/mcp",json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_recipe","arguments":recipe()}})).await;
     assert_eq!(r["result"]["isError"], false);
     let (_, recipes) = send(&app, "GET", "/api/recipes", Value::Null).await;
@@ -347,4 +347,47 @@ async fn unauthenticated_api_rejects_rebinding_hosts_even_with_matching_origin()
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{host}");
     }
+}
+
+#[tokio::test]
+async fn mcp_recipe_paragraphs_survive_reads_and_edits() {
+    let app = test_app(None);
+    let instructions = "Sin remojo previo.\n\n1) Lava los garbanzos.\n\n2) Cocina 40–50 min.\n\nNOTAS:\nSirve caliente.";
+    let mut input = recipe();
+    input["instructions"] = json!(instructions);
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/mcp",
+        json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"create_recipe", "arguments":input}
+        }),
+    )
+    .await;
+    assert_eq!(created["result"]["isError"], false);
+    let id = created["result"]["structuredContent"]["result"]["id"]
+        .as_i64()
+        .unwrap();
+    let path = format!("/api/recipes/{id}");
+    let (_, saved) = send(&app, "GET", &path, Value::Null).await;
+    assert_eq!(saved["instructions"], instructions);
+    input["title"] = json!("Updated title");
+    assert_eq!(send(&app, "PUT", &path, input).await.0, StatusCode::OK);
+    let (_, fetched) = send(
+        &app,
+        "POST",
+        "/mcp",
+        json!({
+            "jsonrpc":"2.0", "id":2, "method":"tools/call",
+            "params":{"name":"get_recipe", "arguments":{"recipe_id":id}}
+        }),
+    )
+    .await;
+    assert_eq!(
+        fetched["result"]["structuredContent"]["result"]["instructions"],
+        instructions
+    );
+    let (_, listed) = send(&app, "GET", "/api/recipes", Value::Null).await;
+    assert_eq!(listed[0]["instructions"], instructions);
 }

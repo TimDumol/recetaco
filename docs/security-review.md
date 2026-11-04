@@ -1,4 +1,72 @@
-# Security review — 2026-10-24
+# Security hardening — 2026-11-04
+
+Rebased main onto fetched origin/main (already at the same commit). Existing
+application changes and their artifacts are included in this update.
+
+## CI enforcement
+
+`.github/workflows/security.yml` runs on pushes and pull requests, with only
+`contents: read`, no persisted checkout credentials, immutable action commits,
+and a job timeout. It installs Gitleaks 8.30.0, Zizmor 1.32.0, and Foxguard
+0.14.1. Gitleaks scans all fetched Git history and the checkout; Foxguard scans
+checkout secrets and gates new high/critical code findings; Zizmor checks every
+workflow offline with strict collection and its pedantic persona.
+
+The Gitleaks exception applies only to the private-key rule at the exact public
+test fixture `server/tests/fixtures/test-only-rsa.pem`; every other default rule
+remains enabled. Foxguard retains its existing exact test-fixture exception.
+No production credential is intentionally allowlisted.
+
+## Fix and reviewed findings
+
+Pocket ID provisioning previously followed HTTP redirects while sending
+`X-API-KEY`, potentially forwarding that credential to another destination.
+Its opener now refuses every redirect, and its request helper rejects paths
+outside `/api/`, backslashes, line breaks, and fragments. Isolated regression
+checks verify redirect rejection (including HTTPS downgrade and cross-origin
+redirects) and invalid-path rejection without loading a key or provisioning.
+
+`.foxguard-baseline.json` records 16 individually reviewed findings:
+
+- Nine Cargo dependency notices and one npm `jose` notice concern future
+  post-quantum migration of conventional TLS/JWT cryptography. They do not
+  demonstrate a currently exploitable vulnerability; replacing supported OIDC
+  signing algorithms unilaterally would break issuer compatibility.
+- `scripts/check-deployment.py` uses a constant HTTPS origin and script-owned
+  paths. `scripts/measure-memory.py` uses a fixed loopback origin and launches
+  the repository's fixed release binary as an argument list with no shell.
+  Neither accepts externally supplied URLs or executable paths.
+- `web/src/api.ts` and the two `web/src/photos.tsx` call sites use browser-relative
+  `/api` URLs; these are browser requests, not server-side requests.
+
+The baseline contains fingerprints, not blanket rule or path exclusions. Review
+new findings rather than regenerating it automatically. The staged code hook
+uses the same severity threshold and baseline as CI.
+
+## Secret scan coverage and limitations
+
+Gitleaks scanned all five available historical commits and a clean copy of all
+tracked and nonignored untracked files. No live credentials were detected. An
+initial unrestricted directory scan also found embedded PEM examples in three
+ignored Rust build metadata files; these are generated dependency artifacts,
+not application credentials. Foxguard's configured checkout secret scan passed.
+The local `.pocket-id-api-key` remains ignored and is not committed.
+
+Foxguard 0.14.1 skips Android `MainActivity.kt` due to a parse error and does not
+support every repository language/extension. Binary images are not manually
+audited. These checks do not establish that a repository is free of secrets or
+vulnerabilities, and this update does not add a dependency advisory audit.
+
+## Validation
+
+All 27 Rust tests passed, as did rustfmt, Clippy with warnings denied, and the
+production web build. All 13 desktop/mobile/OIDC browser tests passed. Gitleaks history and repository-file scans, Foxguard
+secrets and the baselined high/critical code scan, and pedantic Zizmor passed.
+Android unit tests could not run because no Android SDK is configured.
+
+## Earlier review
+
+## Security review — 2026-10-24
 
 Reviewed main at 031fc112cd43f4219ba41b54977e3854119a341f.
 

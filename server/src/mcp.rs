@@ -28,7 +28,7 @@ fn ingredient() -> Value {
 }
 fn recipe_schema() -> Value {
     schema(
-        json!({"title":string(),"servings":number(),"instructions":string(),"source_url":string(),"ingredients":{"type":"array","items":ingredient()}}),
+        json!({"title":string(),"servings":{"type":"number","default":4,"description":"Default to 4 servings for leftovers unless the user explicitly requests another yield. Scale all ingredient quantities, divided step amounts, and amounts written in instructions consistently."},"instructions":{"type":"string","description":"Plain text with real newline characters: put each numbered cooking step in its own paragraph, separated by a blank line. Put notes in a separate paragraph. Do not flatten steps into one line or use literal backslash-n text, Markdown, or HTML; clients display plain text.","examples":["1) Prepare the ingredients.\n\n2) Cook until tender.\n\nNotes:\nServe warm."]},"source_url":string(),"ingredients":{"type":"array","items":ingredient()},"steps":{"type":"array","maxItems":200,"description":"Optional cooking flow. Include ingredient amounts beside each step. Ingredient and dependency references are zero-based indices. Dependencies must refer to earlier steps; empty after means independently startable. Keep full method and notes in instructions too.","items":{"type":"object","properties":{"text":string(),"ingredients":{"type":"array","items":{"type":"object","properties":{"ingredient":{"type":"integer","minimum":0},"quantity":{"type":["number","null"],"description":"Amount used in this step, in the ingredient unit. Omit or null for full recipe amount; specify portions for divided ingredients."}},"required":["ingredient"]}},"after":{"type":"array","items":{"type":"integer","minimum":0}}},"required":["text","ingredients","after"]}}}),
         &["title", "servings", "ingredients"],
     )
 }
@@ -56,7 +56,9 @@ fn tools() -> Value {
         tool("estimate_recipe_cost","Estimate recipe and per-serving costs from latest matching ingredient/unit purchase prices. Missing prices are unknown; totals are partial and separated by currency.",schema(json!({"recipe_id":id()}),&["recipe_id"]),true),
         tool("list_recipes","List saved recipes, including IDs and ingredients.",schema(json!({}),&[]),true),
         tool("get_recipe","Get a saved recipe.",schema(json!({"recipe_id":id()}),&["recipe_id"]),true),
-        tool("create_recipe","Save a recipe with structured ingredient quantities and units.",recipe_schema(),false),
+        tool("create_recipe","Save a recipe with structured ingredient quantities and units. Default to 4 servings so the household has leftovers, unless the user requests a different yield. Scale ingredients, step portions, and amounts in instruction text to match the serving count. Format instructions as plain text with numbered steps separated by blank lines and notes in their own paragraph. Use real newlines; clients preserve line breaks but do not render Markdown or HTML.",recipe_schema(),false),
+        tool("set_recipe_photo","Replace a recipe cover photo. Supply exactly one of image_url (public HTTPS direct image URL, no redirects) or image_base64 (standard base64 JPEG/PNG/WebP bytes, optionally a data URL). Maximum decoded size 5 MiB; maximum dimensions 4096 × 4096. Stored as a resized JPEG. Returns the recipe with its new photo_version.",schema(json!({"recipe_id":id(),"image_url":string(),"image_base64":string()}),&["recipe_id"]),false),
+        tool("delete_recipe_photo","Remove a recipe cover photo.",schema(json!({"recipe_id":id()}),&["recipe_id"]),false),
         tool("rate_recipe","Set the shared recipe rating to 1–5, or null to clear. This does not create a cook log.",schema(json!({"recipe_id":id(),"rating":{"type":["integer","null"],"minimum":1,"maximum":5}}),&["recipe_id","rating"]),false),
         tool("list_cooks","Read cook history for a recipe, newest date first, including per-cook ratings and notes.",schema(json!({"recipe_id":id()}),&["recipe_id"]),true),
         tool("log_cook","Record one time a recipe was cooked with date, optional 1–5 rating, cook name and notes. Each call creates another cook; inspect history before retrying.",cook_schema(false),false),
@@ -100,6 +102,10 @@ fn call(db: &mut rusqlite::Connection, name: &str, args: Value) -> Result<Value>
         "list_recipes" => json!(db::recipes(db)?),
         "get_recipe" => json!(db::recipe(db, int(&args, "recipe_id")?)?),
         "create_recipe" => json!(db::save_recipe(db, None, decode(args)?)?),
+        "delete_recipe_photo" => {
+            db::delete_photo(db, int(&args, "recipe_id")?)?;
+            json!({"ok":true})
+        }
         "rate_recipe" => json!(db::rate_recipe(
             db,
             int(&args, "recipe_id")?,
@@ -207,7 +213,7 @@ pub async fn handle(
             } else {
                 "2025-03-26"
             };
-            json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"recetaco","version":env!("CARGO_PKG_VERSION")},"instructions":"Use recipe and list IDs from read tools. Adding ingredients is additive, so inspect state before retrying a write."})
+            json!({"protocolVersion":version,"capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"recetaco","version":env!("CARGO_PKG_VERSION")},"instructions":"Use recipe and list IDs from read tools. When proposing or creating recipes, default to 4 servings because the household cooks for leftovers, unless the user explicitly requests another yield. Scale ingredient quantities, divided step amounts, and amounts in instruction text consistently. Adding ingredients is additive, so inspect state before retrying a write. Recipe instructions are plain text: use real newlines and blank lines between numbered steps and notes; do not flatten instructions into a single paragraph."})
         }
         "ping" => json!({}),
         "tools/list" => tools(),
@@ -231,7 +237,12 @@ pub async fn handle(
                 return error(id, -32602, "Arguments must be an object");
             }
             let name = name.to_owned();
-            match s.store.run(move |db| call(db, &name, args)).await {
+            let outcome = if name == "set_recipe_photo" {
+                set_photo(s, args).await
+            } else {
+                s.store.run(move |db| call(db, &name, args)).await
+            };
+            match outcome {
                 Ok(v) => {
                     json!({"content":[{"type":"text","text":v.to_string()}],"structuredContent":{"result":v},"isError":false})
                 }
@@ -241,4 +252,174 @@ pub async fn handle(
         _ => return error(id, -32601, "Method not found"),
     };
     Json(json!({"jsonrpc":"2.0","id":id,"result":result})).into_response()
+}
+
+async fn set_photo(s: AppState, args: Value) -> Result<Value> {
+    use axum::{body::Body, extract::Path};
+    use base64::Engine;
+    let recipe_id = int(&args, "recipe_id")?;
+    // Check existence before fetching or decoding an image.
+    s.store.run(move |db| db::recipe(db, recipe_id)).await?;
+    let bytes = match (args.get("image_url"), args.get("image_base64")) {
+        (Some(Value::String(url)), None) => download_photo(url).await?,
+        (None, Some(Value::String(encoded))) => {
+            let encoded = if encoded.starts_with("data:") {
+                let (prefix, data) = encoded
+                    .split_once(',')
+                    .ok_or_else(|| Error::bad("Invalid image data URL"))?;
+                if !matches!(
+                    prefix,
+                    "data:image/jpeg;base64" | "data:image/png;base64" | "data:image/webp;base64"
+                ) {
+                    return Err(Error::bad("Use a base64 JPEG, PNG, or WebP data URL"));
+                }
+                data
+            } else {
+                encoded.as_str()
+            };
+            if encoded.len() > (5 * 1024 * 1024usize).div_ceil(3) * 4 {
+                return Err(Error::bad("Photo exceeds 5 MiB"));
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(|_| Error::bad("Invalid base64 image"))?;
+            if bytes.len() > 5 * 1024 * 1024 {
+                return Err(Error::bad("Photo exceeds 5 MiB"));
+            }
+            bytes
+        }
+        _ => {
+            return Err(Error::bad(
+                "Supply exactly one of image_url or image_base64",
+            ));
+        }
+    };
+    let recipe = crate::photos::upload(
+        State(s),
+        Path(recipe_id),
+        axum::http::Request::new(Body::from(bytes)),
+    )
+    .await?;
+    Ok(json!(recipe.0))
+}
+
+// Resolve once and pin the addresses to avoid DNS rebinding. Redirects and proxies
+// are disabled so a public image URL cannot reach internal services indirectly.
+async fn download_photo(raw: &str) -> Result<Vec<u8>> {
+    let url = reqwest::Url::parse(raw).map_err(|_| Error::bad("Invalid image URL"))?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return Err(Error::bad(
+            "Use a public HTTPS image URL on port 443 without credentials",
+        ));
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| Error::bad("Image URL needs a host"))?;
+    let addresses: Vec<_> = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::net::lookup_host((host, 443)),
+    )
+    .await
+    .map_err(|_| Error::bad("Image host lookup timed out"))?
+    .map_err(|_| Error::bad("Could not resolve image host"))?
+    .collect();
+    if addresses.is_empty() || addresses.iter().any(|a| !public_ip(a.ip())) {
+        return Err(Error::bad(
+            "Image URL must resolve only to public IP addresses",
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(15))
+        .resolve_to_addrs(host, &addresses)
+        .build()
+        .map_err(|_| Error::internal())?;
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| Error::bad("Could not download image"))?;
+    if !response.status().is_success() {
+        return Err(Error::bad(
+            "Image URL must return a successful response without redirects",
+        ));
+    }
+    let limit = 5 * 1024 * 1024;
+    if response.content_length().is_some_and(|n| n > limit as u64) {
+        return Err(Error::bad("Photo exceeds 5 MiB"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| Error::bad("Could not read image"))?
+    {
+        if chunk.len() > limit - bytes.len() {
+            return Err(Error::bad("Photo exceeds 5 MiB"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+fn public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => {
+            let [a, b, _, _] = ip.octets();
+            !(ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_multicast()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 198 && (18..=19).contains(&b))
+                || (a == 192 && b == 0))
+        }
+        std::net::IpAddr::V6(ip) => {
+            // Only global unicast; exclude special-purpose 2001::/23 and documentation.
+            let s = ip.segments();
+            (s[0] & 0xe000) == 0x2000
+                && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
+                && !(s[0] == 0x2002 || (s[0] == 0x3fff && s[1] < 0x1000))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::public_ip;
+
+    #[test]
+    fn image_downloads_exclude_internal_and_special_networks() {
+        for address in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "198.18.0.1",
+            "192.0.2.1",
+            "224.0.0.1",
+            "::1",
+            "::ffff:127.0.0.1",
+            "fc00::1",
+            "fe80::1",
+            "2001:db8::1",
+            "2002:7f00:1::",
+        ] {
+            assert!(!public_ip(address.parse().unwrap()), "{address}");
+        }
+        for address in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            assert!(public_ip(address.parse().unwrap()), "{address}");
+        }
+    }
 }

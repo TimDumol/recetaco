@@ -160,6 +160,8 @@ async fn whole_week_addition_is_atomic() {
         json!([])
     );
 }
+static PHOTO_TEST: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn jpeg() -> Vec<u8> {
     let rgb = image::RgbImage::from_pixel(1400, 700, image::Rgb([130, 100, 40]));
     let mut bytes = vec![];
@@ -170,6 +172,7 @@ fn jpeg() -> Vec<u8> {
 }
 #[tokio::test]
 async fn photos_resize_replace_remove_and_require_authentication() {
+    let _guard = PHOTO_TEST.lock().await;
     let app = app(
         AppState::new(Store::open(":memory:").unwrap(), None),
         "/missing",
@@ -290,4 +293,72 @@ async fn existing_v1_database_is_preserved_and_upgraded() {
         .unwrap();
     drop(store);
     let _ = std::fs::remove_file(path);
+}
+
+async fn mcp_photo(app: &Router, name: &str, arguments: Value) -> Value {
+    send(app, "POST", "/mcp", json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).await.1["result"].clone()
+}
+
+#[tokio::test]
+async fn mcp_cover_images_upload_validate_replace_and_delete() {
+    let _guard = PHOTO_TEST.lock().await;
+    use base64::Engine;
+    let app = app(
+        AppState::new(Store::open(":memory:").unwrap(), None),
+        "/missing",
+    );
+    let (_, r) = send(&app, "POST", "/api/recipes", recipe()).await;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(jpeg());
+    for (revision, data) in [
+        (1, encoded.clone()),
+        (2, format!("data:image/jpeg;base64,{encoded}")),
+    ] {
+        let result = mcp_photo(
+            &app,
+            "set_recipe_photo",
+            json!({"recipe_id":r["id"],"image_base64":data}),
+        )
+        .await;
+        assert_eq!(result["isError"], false, "{result}");
+        assert_eq!(
+            result["structuredContent"]["result"]["photo_version"],
+            revision
+        );
+    }
+    for args in [
+        json!({"recipe_id":r["id"]}),
+        json!({"recipe_id":r["id"],"image_base64":"bad!"}),
+        json!({"recipe_id":r["id"],"image_base64":"aGVsbG8="}),
+        json!({"recipe_id":r["id"],"image_url":"https://example.com/x","image_base64":encoded}),
+        json!({"recipe_id":r["id"],"image_url":"file:///tmp/photo"}),
+        json!({"recipe_id":r["id"],"image_url":"https://127.0.0.1/photo"}),
+        json!({"recipe_id":r["id"],"image_url":"https://[::1]/photo"}),
+        json!({"recipe_id":999,"image_base64":encoded}),
+    ] {
+        let result = mcp_photo(&app, "set_recipe_photo", args).await;
+        assert_eq!(result["isError"], true, "{result}");
+    }
+    let (_, saved) = send(
+        &app,
+        "GET",
+        &format!("/api/recipes/{}", r["id"]),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(saved["photo_version"], 2);
+    assert_eq!(
+        mcp_photo(&app, "delete_recipe_photo", json!({"recipe_id":r["id"]})).await["isError"],
+        false
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("/api/recipes/{}/photo", r["id"]),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
 }

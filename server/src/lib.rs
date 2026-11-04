@@ -220,7 +220,10 @@ pub fn app(state: AppState, web_dir: &str) -> Router {
         )
         .route("/api/lists/{id}/recipes/{recipe_id}", post(add_recipe))
         .route("/api/export", get(export))
-        .route("/mcp", post(mcp::handle))
+        .route(
+            "/mcp",
+            post(mcp::handle).layer(DefaultBodyLimit::max(7 * 1024 * 1024)),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), protect));
     Router::new()
         .merge(api)

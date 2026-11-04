@@ -1,0 +1,10 @@
+title = "Recetaco secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-key"
+[[rules.allowlists]]
+description = "Public RSA signing fixture used only by the local test issuer"
+paths = ['''^server/tests/fixtures/test-only-rsa\.pem$''']

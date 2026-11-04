@@ -338,3 +338,116 @@ test("inventory counts can be corrected without losing receipt prices", async ({
       .getByText("2.50 EUR", { exact: true }),
   ).toBeVisible();
 });
+
+test("cooking flow keeps divided ingredient amounts next to dependent steps", async ({
+  page,
+  request,
+}, info) => {
+  const title = `Cooking flow ${info.project.name}`;
+  const response = await request.post("/api/recipes", {
+    data: {
+      title,
+      servings: 2,
+      instructions: "Cook pasta while making sauce. Reserve oil for serving.",
+      source_url: "",
+      ingredients: [
+        { name: "Pasta", quantity: 200, unit: "g" },
+        { name: "Oil", quantity: 20, unit: "ml" },
+      ],
+      steps: [
+        {
+          text: "Boil pasta. Stir occasionally until tender.",
+          ingredients: [{ ingredient: 0 }],
+          after: [],
+        },
+        {
+          text: "Make sauce",
+          ingredients: [{ ingredient: 1, quantity: 15 }],
+          after: [],
+        },
+        {
+          text: "Combine and serve",
+          ingredients: [{ ingredient: 1, quantity: 5 }],
+          after: [0, 1],
+        },
+      ],
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  await page.goto("/");
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  const steps = page.locator(".cooking-step");
+  await expect(steps.nth(0)).toContainText("200 g");
+  await expect(steps.nth(1)).toContainText("15 ml");
+  await expect(steps.nth(2)).toContainText("5 ml");
+  await expect(steps.nth(2)).toContainText("After step 1 + step 2");
+  await page
+    .getByRole("dialog")
+    .screenshot({ path: `../artifacts/cooking-flow-${info.project.name}.png` });
+  await expect(
+    page.getByText("2 parallel branches", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    steps.nth(0).locator(".flow-directions .instructions"),
+  ).not.toBeVisible();
+  await steps
+    .nth(0)
+    .getByText("Full directions for step 1", { exact: true })
+    .click();
+  await expect(
+    steps.nth(0).locator(".flow-directions .instructions"),
+  ).toContainText("Stir occasionally");
+  await steps.nth(0).getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Method", exact: true }).click();
+  await expect(steps.nth(0).getByRole("checkbox")).toBeChecked();
+  await expect(page.locator(".flow-stage-heading")).toHaveCount(0);
+  await expect(page.locator(".flow-directions")).toHaveCount(0);
+  await expect(steps.nth(0).locator(".instructions")).toBeVisible();
+  await expect(steps.nth(0)).toContainText("Stir occasionally");
+  await page.getByRole("button", { name: "Flow", exact: true }).click();
+  await expect(page.locator(".flow-stage-heading")).toHaveCount(2);
+  await expect(steps.nth(0).getByRole("checkbox")).toBeChecked();
+
+  await page.reload();
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(page.locator(".cooking-step").nth(2)).toContainText("5 ml");
+});
+
+test("edit recipe to link step amounts and keep them after saving", async ({
+  page,
+}, info) => {
+  const title = `Linked steps ${info.project.name}`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "New recipe", exact: true }).click();
+  await page.getByRole("textbox", { name: "Recipe name" }).fill(title);
+  await page.getByRole("textbox", { name: "Ingredient 1 name" }).fill("Oil");
+  await page
+    .getByRole("spinbutton", { name: "Ingredient 1 quantity" })
+    .fill("20");
+  await page.getByRole("textbox", { name: "Ingredient 1 unit" }).fill("ml");
+  await page
+    .getByRole("textbox", { name: "Instructions", exact: true })
+    .fill("Heat oil.\n\nServe with oil.");
+  await page
+    .getByRole("button", { name: "Make steps from instructions" })
+    .click();
+  await page
+    .getByRole("group", { name: "Step 1", exact: true })
+    .getByRole("checkbox", { name: "Oil" })
+    .check();
+  await page
+    .getByRole("spinbutton", { name: "Amount in step 1: Oil" })
+    .fill("15");
+  await page
+    .getByRole("group", { name: "Step 2", exact: true })
+    .getByRole("checkbox", { name: "Oil" })
+    .check();
+  await page
+    .getByRole("spinbutton", { name: "Amount in step 2: Oil" })
+    .fill("5");
+  await page.getByRole("button", { name: "Save recipe", exact: true }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(page.locator(".cooking-step").nth(0)).toContainText("15 ml");
+  await expect(page.locator(".cooking-step").nth(1)).toContainText("5 ml");
+});

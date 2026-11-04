@@ -1,3 +1,4 @@
+import { CookingMethod, StepEditor } from "./method";
 import { Inventory, RecipeCost } from "./inventory";
 import {
   CookForm,
@@ -964,9 +965,7 @@ function App() {
                 ))}
               </ul>
               <h3>Let’s cook</h3>
-              <p className="instructions">
-                {dialog.recipe.instructions || "No instructions added yet."}
-              </p>
+              <CookingMethod key={dialog.recipe.id} recipe={dialog.recipe} />
               {dialog.recipe.source_url && (
                 <a
                   href={dialog.recipe.source_url}
@@ -1413,6 +1412,16 @@ function RecipeForm({
               setData({
                 ...data,
                 ingredients: data.ingredients.filter((_, k) => k !== n),
+                steps: data.steps?.map((s) => ({
+                  ...s,
+                  ingredients: s.ingredients
+                    .filter((u) => u.ingredient !== n)
+                    .map((u) => ({
+                      ...u,
+                      ingredient:
+                        u.ingredient > n ? u.ingredient - 1 : u.ingredient,
+                    })),
+                })),
               })
             }
           >
@@ -1444,6 +1453,7 @@ function RecipeForm({
           onChange={(e) => setData({ ...data, instructions: e.target.value })}
         />
       </label>
+      <StepEditor data={data} change={setData} />
       <div className="dialog-actions">
         <button className="primary" disabled={busy || preparing}>
           {busy || preparing ? "Preparing…" : "Save recipe"}

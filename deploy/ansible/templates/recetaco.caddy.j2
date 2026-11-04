@@ -1,4 +1,9 @@
 recetaco.timdumol.com {
+    import edge_waf
+    log {
+        output stdout
+        format json
+    }
     encode zstd gzip
     header {
         -Server

@@ -8,6 +8,17 @@ import org.junit.Test
 
 class ApiTest {
     @Test
+    fun `cooking steps preserve divided amounts and dependencies on the wire`() {
+        val recipe = RecetacoApi.json.decodeFromString<Recipe>(
+            """{"id":1,"title":"Oil","servings":2,"ingredients":[{"name":"Oil","quantity":20,"unit":"ml"}],"steps":[{"text":"Heat","ingredients":[{"ingredient":0,"quantity":15}],"after":[]},{"text":"Serve","ingredients":[{"ingredient":0,"quantity":5}],"after":[0]}]}"""
+        )
+        val roundtrip = RecetacoApi.json.decodeFromString<Recipe>(RecetacoApi.json.encodeToString(Recipe.serializer(), recipe))
+        assertEquals(15.0, roundtrip.steps[0].ingredients[0].quantity!!, 0.0)
+        assertEquals(listOf(0), roundtrip.steps[1].after)
+        assertTrue(RecetacoApi.json.decodeFromString<Recipe>("""{"id":2,"title":"Legacy"}""").steps.isEmpty())
+    }
+
+    @Test
     fun `cook logs preserve date rating and reflection notes`() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(

@@ -19,7 +19,11 @@ uses `https://recetaco.timdumol.com/auth/callback` and logout callback
 `dev.recetaco.app:/oauth2redirect`. Both are public PKCE clients restricted to
 the `recetaco-household` group (Tim and Jopi), with delegated access to the
 `https://recetaco.timdumol.com` API. The server also permits only those two subjects.
-The provisioning script owns that group's membership and these two client IDs.
+The provisioning script owns that group's membership and these client IDs. It
+also provisions `recetaco-chatgpt`, a household-restricted public PKCE client
+with the same delegated API access and callback
+`https://chatgpt.com/connector_platform_oauth_redirect`. See the
+[ChatGPT connection steps](../docs/pocket-id.md#connect-the-production-kitchen-to-chatgpt).
 
 Data persists in `/opt/recetaco/data/recetaco.db`, including photos. Use SQLite's
 backup API for a live backup, or stop the Recetaco service before copying the

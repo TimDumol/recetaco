@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +23,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -45,6 +49,14 @@ private val colors =
     lightColorScheme(
         primary = orange,
         secondary = green,
+        onPrimary = Color.White,
+        primaryContainer = Color(0xFFF5DFD3),
+        onPrimaryContainer = Color(0xFF74351F),
+        secondaryContainer = Color(0xFFDCE7D8),
+        onSecondaryContainer = green,
+        onSurfaceVariant = Color(0xFF566158),
+        outline = Color(0xFF7A8177),
+        outlineVariant = Color(0xFFDCE0D5),
         background = cream,
         surface = cream,
         surfaceVariant = Color(0xFFE9EDDF),
@@ -66,6 +78,7 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
     var page by rememberSaveable { mutableStateOf(0) }
     var screen by rememberSaveable { mutableStateOf<String?>(null) }
     var recipeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var recipeTab by rememberSaveable(recipeId) { mutableStateOf(0) }
     var editingCookId by rememberSaveable { mutableStateOf<Long?>(null) }
     LaunchedEffect(screen, recipeId, vm.loaded, vm.busy) {
         if (
@@ -188,6 +201,7 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                             )
                         },
                         label = { Text(title) },
+                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.secondaryContainer),
                     )
                 }
             }
@@ -257,6 +271,12 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                                     leadingIcon = { Icon(Icons.Outlined.Search, null) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
+                                    shape = RoundedCornerShape(18.dp),
+                                    trailingIcon = {
+                                        if (search.isNotEmpty()) IconButton(onClick = { search = "" }) {
+                                            Icon(Icons.Outlined.Close, "Clear search")
+                                        }
+                                    },
                                 )
                             }
                             if (vm.recipes.isEmpty())
@@ -292,7 +312,8 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                                             Spacer(Modifier.height(7.dp))
                                             Text(
                                                 "Serves ${qty(r.servings)} · ${r.ingredients.size} ingredients",
-                                                fontSize = 12.sp,
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                             Text(
                                                 "★ ${r.rating?.let {"$it/5"} ?: "Not rated"} · ${r.cook_count} ${if(r.cook_count==1L) "cook" else "cooks"}",
@@ -565,7 +586,7 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                                     items(list.items, key = { it.id }) { item ->
                                         Row(
                                             Modifier.fillMaxWidth()
-                                                .background(Color(0xFFF0F2E8))
+                                                .background(if (item.checked) cream else Color.White, RoundedCornerShape(16.dp))
                                                 .padding(5.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
@@ -580,12 +601,12 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                                                 textDecoration =
                                                     if (item.checked) TextDecoration.LineThrough
                                                     else TextDecoration.None,
-                                                fontSize = 14.sp,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                             )
-                                            Text(
-                                                "${qty(item.quantity)} ${item.unit}",
-                                                fontSize = 12.sp,
-                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            AmountBadge(item.quantity, item.unit, muted = item.checked)
                                             IconButton(
                                                 onClick = { vm.deleteItem(item) },
                                                 enabled = !vm.busy,
@@ -621,6 +642,18 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                 },
             busy = vm.busy,
             close = close,
+            fullScreen = screen == "recipe",
+            contentKey = if (screen == "recipe") recipeTab else screen,
+            header = {
+                if (screen == "recipe") {
+                    TabRow(selectedTabIndex = recipeTab, containerColor = cream) {
+                        listOf("Ingredients", "Cook", "Details").forEachIndexed { index, label ->
+                            Tab(selected = recipeTab == index, onClick = { recipeTab = index }, text = { Text(label) },
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
         ) {
             vm.error?.let { ErrorCard(it) }
             when (screen) {
@@ -641,115 +674,130 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
                     }
                 "recipe" ->
                     recipe?.let { r ->
-                        if (r.photo_version > 0)
-                            RecipePhoto(vm, r, Modifier.fillMaxWidth().height(200.dp))
-                        Text("Serves ${qty(r.servings)}", color = orange)
-                        Choice(
-                            "Recipe rating",
-                            r.rating?.let { "$it/5" } ?: "Not rated",
-                            listOf<Int?>(null, 1, 2, 3, 4, 5).map {
-                                it to (it?.let { n -> "$n/5" } ?: "Not rated")
-                            },
-                            !vm.busy,
-                        ) {
-                            vm.rateRecipe(r.id, it)
+                        if (recipeTab == 0) {
+                            if (r.photo_version > 0)
+                                RecipePhoto(vm, r, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.PeopleOutline, null, tint = green, modifier = Modifier.size(20.dp))
+                                Text("Serves ${qty(r.servings)}", fontWeight = FontWeight.Medium, color = green)
+                                Text("· ${r.ingredients.size} ingredients", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                            }
+                            Text("What you’ll need", fontSize = 23.sp, fontFamily = FontFamily.Serif)
+                            Surface(color = Color.White, shape = RoundedCornerShape(20.dp)) {
+                                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                    r.ingredients.forEachIndexed { index, i ->
+                                        IngredientLine(i.name, i.quantity, i.unit)
+                                        if (index < r.ingredients.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    }
+                                }
+                            }
+                            Button(onClick = { recipeTab = 1 }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Start cooking · ${r.steps.size.takeIf { it > 0 }?.let { "$it steps" } ?: "Method"}")
+                            }
                         }
-                        Text(
-                            "${r.cook_count} ${if(r.cook_count==1L) "cook" else "cooks"} · Average cook rating: ${r.average_cook_rating?.let {qty(it)+"/5"} ?: "Not rated"}",
-                            fontSize = 12.sp,
-                        )
-                        r.last_cooked?.let { Text("Last cooked: $it", fontSize = 12.sp) }
-                        Text("What you’ll need", fontSize = 21.sp, fontFamily = FontFamily.Serif)
-                        r.ingredients.forEach { i ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                Text(i.name, Modifier.weight(1f))
-                                Text("${qty(i.quantity)} ${i.unit}")
+                        // Keep cooking state alive when consulting the ingredients or details.
+                        CookingMethod(r, visible = recipeTab == 1)
+                        if (recipeTab == 2) {
+                            Text(r.title, fontSize = 25.sp, lineHeight = 31.sp, fontFamily = FontFamily.Serif)
+                            var showNotes by remember(r.id) { mutableStateOf(false) }
+                            OutlinedButton(onClick = { showNotes = !showNotes }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (showNotes) "Hide original recipe & tips" else "Original recipe & tips")
+                            }
+                            if (showNotes) Text(r.instructions, lineHeight = 26.sp)
+                            if (r.source_url.isNotBlank())
+                                Text(r.source_url, color = orange, fontSize = 12.sp)
+                            Button(onClick = { open("shop", r) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Add ingredients to list")
+                            }
+                            OutlinedButton(
+                                onClick = { open("wish", r) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Add to this week’s wishlist")
+                            }
+                            OutlinedButton(
+                                onClick = { open("plan", r) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Plan this meal")
                             }
                             HorizontalDivider()
-                        }
-                        Text("Let’s cook", fontSize = 21.sp, fontFamily = FontFamily.Serif)
-                        Text(
-                            r.instructions.ifBlank { "No instructions added yet." },
-                            lineHeight = 25.sp,
-                        )
-                        if (r.source_url.isNotBlank())
-                            Text(r.source_url, color = orange, fontSize = 12.sp)
-                        Button(onClick = { open("shop", r) }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Add ingredients to list")
-                        }
-                        OutlinedButton(
-                            onClick = { open("wish", r) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Add to this week’s wishlist")
-                        }
-                        OutlinedButton(
-                            onClick = { open("plan", r) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Plan this meal")
-                        }
-                        HorizontalDivider()
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Cook history",
-                                Modifier.weight(1f),
-                                fontSize = 23.sp,
-                                fontFamily = FontFamily.Serif,
-                            )
-                            TextButton(
-                                onClick = {
-                                    editingCookId = null
-                                    screen = "cook"
+                            Choice(
+                                "Recipe rating",
+                                r.rating?.let { "$it/5" } ?: "Not rated",
+                                listOf<Int?>(null, 1, 2, 3, 4, 5).map {
+                                    it to (it?.let { n -> "$n/5" } ?: "Not rated")
                                 },
-                                enabled = !vm.busy,
+                                !vm.busy,
                             ) {
-                                Text("Log a cook")
+                                vm.rateRecipe(r.id, it)
                             }
-                        }
-                        if (vm.historyRecipeId != r.id || vm.busy)
-                            Text("Loading cook history…", fontSize = 12.sp)
-                        else {
-                            if (vm.cooks.isEmpty())
+                            Text(
+                                "${r.cook_count} ${if(r.cook_count==1L) "cook" else "cooks"} · Average cook rating: ${r.average_cook_rating?.let {qty(it)+"/5"} ?: "Not rated"}",
+                                fontSize = 12.sp,
+                            )
+                            r.last_cooked?.let { Text("Last cooked: $it", fontSize = 12.sp) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "No cooks logged yet. Keep a note of what worked for next time.",
-                                    fontSize = 12.sp,
+                                    "Cook history",
+                                    Modifier.weight(1f),
+                                    fontSize = 23.sp,
+                                    fontFamily = FontFamily.Serif,
                                 )
-                            vm.cooks.forEach { c ->
-                                CookEntry(
-                                    c,
-                                    !vm.busy,
-                                    edit = {
-                                        editingCookId = c.id
+                                TextButton(
+                                    onClick = {
+                                        editingCookId = null
                                         screen = "cook"
                                     },
-                                    remove = {
+                                    enabled = !vm.busy,
+                                ) {
+                                    Text("Log a cook")
+                                }
+                            }
+                            if (vm.historyRecipeId != r.id || vm.busy)
+                                Text("Loading cook history…", fontSize = 12.sp)
+                            else {
+                                if (vm.cooks.isEmpty())
+                                    Text(
+                                        "No cooks logged yet. Keep a note of what worked for next time.",
+                                        fontSize = 12.sp,
+                                    )
+                                vm.cooks.forEach { c ->
+                                    CookEntry(
+                                        c,
+                                        !vm.busy,
+                                        edit = {
+                                            editingCookId = c.id
+                                            screen = "cook"
+                                        },
+                                        remove = {
+                                            confirm =
+                                                "Delete the cook logged on ${c.cooked_on}?" to
+                                                    {
+                                                        vm.deleteCook(c)
+                                                    }
+                                        },
+                                    )
+                                }
+                                TextButton(onClick = { vm.loadCooks(r.id) }, enabled = !vm.busy) {
+                                    Text("Refresh cook history")
+                                }
+                            }
+                            Row {
+                                TextButton(onClick = { open("edit", r) }) { Text("Edit recipe") }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(
+                                    onClick = {
                                         confirm =
-                                            "Delete the cook logged on ${c.cooked_on}?" to
+                                            "Delete this recipe and its meal-plan entries? Shopping items will stay." to
                                                 {
-                                                    vm.deleteCook(c)
+                                                    vm.deleteRecipe(r, close)
                                                 }
                                     },
-                                )
-                            }
-                            TextButton(onClick = { vm.loadCooks(r.id) }, enabled = !vm.busy) {
-                                Text("Refresh cook history")
-                            }
-                        }
-                        Row {
-                            TextButton(onClick = { open("edit", r) }) { Text("Edit recipe") }
-                            Spacer(Modifier.weight(1f))
-                            TextButton(
-                                onClick = {
-                                    confirm =
-                                        "Delete this recipe and its meal-plan entries? Shopping items will stay." to
-                                            {
-                                                vm.deleteRecipe(r, close)
-                                            }
-                                },
-                                enabled = !vm.busy,
-                            ) {
-                                Text("Delete", color = orange)
+                                    enabled = !vm.busy,
+                                ) {
+                                    Text("Delete", color = orange)
+                                }
                             }
                         }
                     }
@@ -823,7 +871,7 @@ fun RecetacoApp(vm: RecetacoViewModel = viewModel()) {
 private fun Heading(title: String, subtitle: String) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Text(title, fontSize = 34.sp, lineHeight = 39.sp, fontFamily = FontFamily.Serif)
-        Text(subtitle, fontSize = 13.sp, color = Color(0xFF788078))
+        Text(subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -858,6 +906,9 @@ private fun Sheet(
     title: String,
     busy: Boolean,
     close: () -> Unit,
+    fullScreen: Boolean = false,
+    contentKey: Any? = null,
+    header: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     androidx.compose.ui.window.Dialog(
@@ -865,18 +916,21 @@ private fun Sheet(
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = MaterialTheme.shapes.large,
-            modifier = Modifier.fillMaxWidth().padding(14.dp).heightIn(max = 720.dp),
+            shape = if (fullScreen) RoundedCornerShape(0.dp) else MaterialTheme.shapes.large,
+            modifier = if (fullScreen) Modifier.fillMaxSize().systemBarsPadding()
+                else Modifier.fillMaxWidth().padding(14.dp).heightIn(max = 720.dp),
         ) {
             Column(
-                Modifier.imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
+                Modifier.imePadding().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         title,
                         Modifier.weight(1f),
-                        fontSize = 27.sp,
+                        fontSize = if (fullScreen) 18.sp else 27.sp,
+                        maxLines = if (fullScreen) 2 else Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis,
                         fontFamily = FontFamily.Serif,
                     )
                     IconButton(onClick = close, enabled = !busy) {
@@ -884,7 +938,13 @@ private fun Sheet(
                     }
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                content()
+                header()
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                val scroll = key(contentKey) { rememberScrollState() }
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(scroll),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) { content() }
             }
         }
     }
@@ -1012,6 +1072,7 @@ private data class DraftIngredient(
     val name: String = "",
     val quantity: String = "1",
     val unit: String = "",
+    val originalIndex: Int? = null,
 )
 
 @Composable
@@ -1038,7 +1099,7 @@ private fun RecipeEditor(
     val ingredients = remember {
         mutableStateListOf<DraftIngredient>().apply {
             addAll(
-                recipe?.ingredients?.map { DraftIngredient(it.name, qty(it.quantity), it.unit) }
+                recipe?.ingredients?.mapIndexed { index, i -> DraftIngredient(i.name, qty(i.quantity), i.unit, index) }
                     ?: listOf(DraftIngredient())
             )
         }
@@ -1107,7 +1168,17 @@ private fun RecipeEditor(
         Text("Add ingredient")
     }
     Field("Instructions", instructions, { instructions = it }, lines = 4)
+    val stepAmountsValid = recipe?.steps.orEmpty().all { step ->
+        step.ingredients.all { usage ->
+            val ingredient = ingredients.firstOrNull { it.originalIndex == usage.ingredient }
+            ingredient == null || usage.quantity == null ||
+                (ingredient.quantity.toDoubleOrNull()?.let { usage.quantity <= it } == true)
+        }
+    }
+    if (!stepAmountsValid) Text("A cooking step uses more than the recipe amount. Adjust the step amounts in the web editor first.", color = MaterialTheme.colorScheme.error)
+    if (!recipe?.steps.isNullOrEmpty()) Text("Cooking steps and their ingredient links can be edited in the web app. Original instructions below are kept separately.", fontSize = 12.sp)
     val valid =
+        stepAmountsValid &&
         title.isNotBlank() &&
             title.length <= 200 &&
             validNumber(servings) &&
@@ -1128,6 +1199,10 @@ private fun RecipeEditor(
                     instructions,
                     url,
                     ingredients.map { Ingredient(it.name, it.quantity.toDouble(), it.unit) },
+                    steps = recipe?.steps?.map { step -> step.copy(ingredients = step.ingredients.mapNotNull { usage ->
+                        val index = ingredients.indexOfFirst { it.originalIndex == usage.ingredient }
+                        if (index < 0) null else usage.copy(ingredient = index)
+                    }) } ?: emptyList(),
                 ),
                 photo,
                 removePhoto,

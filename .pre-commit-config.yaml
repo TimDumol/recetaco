@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: foxguard
         name: Foxguard code security
-        entry: foxguard --staged
+        entry: foxguard --severity high --baseline .foxguard-baseline.json --staged
         language: python
         additional_dependencies: [foxguard==0.14.1]
         pass_filenames: false

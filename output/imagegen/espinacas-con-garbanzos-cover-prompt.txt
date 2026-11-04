@@ -1,0 +1,3 @@
+Tool: built-in image_gen (imagegen skill)
+
+Use case: photorealistic-natural. Asset type: cover photo for a home recipe app. Primary request: appetizing realistic food photography of Spanish espinacas con garbanzos, tender whole chickpeas with wilted spinach in a thick olive oil, garlic, bread, cumin and smoked paprika sauce. A rustic shallow ceramic serving bowl on a simple light kitchen table, natural side window light, three-quarter overhead view, food fills most of frame and remains legible in a square crop. Home-cooked texture, warm natural colors, modest sauce coating the chickpeas rather than soup. No egg (optional ingredient), no text, no watermark, no people. Generate one image.

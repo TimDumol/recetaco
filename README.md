@@ -1,6 +1,6 @@
 # Recetaco
 
-Security tooling: run `./scripts/install-security-hooks.sh` to install pinned Foxguard and enable code and secret scans before commits. See [the security review](docs/security-review.md) for findings and scan limitations.
+Security CI runs Gitleaks (history and checkout), Zizmor (workflows), and Foxguard (code and secrets). For local hooks, run `./scripts/install-security-hooks.sh` to install pinned Foxguard and enable code and secret scans before commits. See [the security review](docs/security-review.md) for findings and scan limitations.
 
 A small, self-hosted recipe planner with shopping lists. Rust + SQLite server, React browser client, native Kotlin/Jetpack Compose Android client, and built-in MCP. MIT licensed.
 
@@ -71,6 +71,8 @@ Keep the database on local storage. SQLite uses WAL, a 2 MiB page-cache target, 
 
 ## Native Android
 
+To build and install a debug APK on your ADB-connected phone, run `./scripts/android-install.sh` from the repository root. It automatically limits workers and JVM memory based on available capacity (at most 4 workers and a 2 GiB heap), disables parallel project builds, and exits after installation. By default it selects the single authorized physical device, ignoring emulators. To select a specific phone or emulator, pass the ADB serial (`./scripts/android-install.sh SERIAL`), set `RECETACO_ANDROID_DEVICE`, or set `ANDROID_SERIAL` (in that order of precedence). Requires Linux, JDK 17, Android SDK 35, and an authorized ADB device; the SDK defaults to `~/Android/Sdk` or your `ANDROID_HOME`/`ANDROID_SDK_ROOT`.
+
 Open `android/` in Android Studio. Install Android SDK 35 and use JDK 17, then build:
 
 ```sh
@@ -97,9 +99,13 @@ The MCP endpoint advertises OAuth protected-resource metadata for Pocket ID. Reg
 }
 ```
 
-Tools: `rate_recipe`, `list_cooks`, `log_cook`, `update_cook`, `delete_cook`, `list_weekly_wishlist`, `add_to_weekly_wishlist`, `mark_wishlist_cooked`, `add_week_to_shopping_list`, `list_recipes`, `get_recipe`, `create_recipe`, `list_meals`, `plan_meal`, `list_shopping_lists`, `create_shopping_list`, `get_shopping_list`, `add_recipe_to_shopping_list`, `add_shopping_item`, `check_shopping_item`.
+Tools: `set_recipe_photo`, `delete_recipe_photo`, `rate_recipe`, `list_cooks`, `log_cook`, `update_cook`, `delete_cook`, `list_weekly_wishlist`, `add_to_weekly_wishlist`, `mark_wishlist_cooked`, `add_week_to_shopping_list`, `list_recipes`, `get_recipe`, `create_recipe`, `list_meals`, `plan_meal`, `list_shopping_lists`, `create_shopping_list`, `get_shopping_list`, `add_recipe_to_shopping_list`, `add_shopping_item`, `check_shopping_item`.
 
 Example: “Add the rice bowl for four to next week’s wishlist, and add the uncooked meals’ ingredients to This week.” The client first discovers recipe/list IDs, then calls the write tools. Recipe additions are additive and must not be blindly retried after a timeout.
+
+Use `set_recipe_photo` with `recipe_id` and exactly one of `image_url` or `image_base64` to upload or replace a cover image. URLs must be direct public HTTPS image links on port 443; redirects, credentials, proxies, and private network destinations are rejected. Base64 accepts standard encoded JPEG/PNG/WebP bytes or an image data URL. Both inputs use the same photo processing as browser uploads (5 MiB decoded limit, dimensions up to 4096 × 4096). The tool returns the updated recipe and `photo_version`. Use `delete_recipe_photo` with `recipe_id` to remove it. MCP clients must be able to provide the image URL or encoded bytes; a local file path alone is not an upload.
+
+Example arguments: `{"recipe_id":1,"image_url":"https://example.com/meal.jpg"}` or `{"recipe_id":1,"image_base64":"data:image/png;base64,..."}`. MCP JSON requests allow up to 7 MiB to accommodate base64; other JSON API requests retain the 1 MiB limit.
 
 ## HTTP API
 
@@ -125,7 +131,7 @@ All write payloads use JSON. Bearer authentication applies to `/api/*` and `/mcp
 | POST | `/api/lists/{id}/recipes/{recipe_id}` | Add ingredients with `{servings}` |
 | GET | `/api/export` | Consistent JSON snapshot |
 
-Recipes use `{title, servings, ingredients: [{name, quantity, unit}], instructions, source_url}`. Quantities and servings must be finite, positive, and at most 1,000,000. Units may be blank. Meal input: `{recipe_id, date: "YYYY-MM-DD", servings, slot}`; slots: breakfast/lunch/dinner/snack. List input: `{name}`. Deleting a recipe removes its rating, cook history, photo, weekly wishes, and dated meal entries. Existing shopping items remain.
+Recipes use `{title, servings, ingredients: [{name, quantity, unit}], instructions, source_url}`. Instructions are plain text in both clients: use real newline characters and blank lines between numbered steps, with notes in a separate paragraph. MCP uploads must preserve these line breaks (JSON `\n` escapes decode to real newlines); Markdown and HTML are displayed as text. Quantities and servings must be finite, positive, and at most 1,000,000. Units may be blank. Meal input: `{recipe_id, date: "YYYY-MM-DD", servings, slot}`; slots: breakfast/lunch/dinner/snack. List input: `{name}`. Deleting a recipe removes its rating, cook history, photo, weekly wishes, and dated meal entries. Existing shopping items remain.
 
 Weekly wish input: `{recipe_id, week: "YYYY-MM-DD", servings}`. Any day in a week identifies that Monday-to-Sunday week; storage and responses use the Monday date. Weeks can be browsed into the future or past. Marking a meal cooked does not modify existing shopping items. Shopping for a week is additive, so repeating it adds ingredients again.
 
@@ -188,3 +194,11 @@ The included [smoke measurement](artifacts/memory.json) records RSS for the Linu
 ## Production deployment
 
 See [Docker, Ansible, shared Caddy, and Pocket ID deployment](deploy/README.md).
+
+## Cooking flow and ingredient amounts
+
+The web recipe detail offers Method and Flow views. Both show linked ingredient amounts directly on step cards, including explicit portions for divided ingredients. Flow groups independent branches and labels joins; Method keeps recipe order. Checkmarks last while the recipe stays open. A pinned ingredient reference works for existing recipes too.
+
+In the web editor, use **Make steps from instructions**, then select each step’s ingredients and any earlier steps it depends on. Conversion splits paragraphs/lines and assumes sequential order; review the links and dependencies. Blank step amounts use the full recipe quantity. The original instructions and notes remain available separately. Android displays the same linked steps and preserves them when editing recipes; edit the step structure in the web app.
+
+API/MCP recipes accept optional `steps: [{text, ingredients: [{ingredient, quantity}], after}]`. References are zero-based indices into recipe ingredients and earlier steps. Omit `quantity` or use null for the full ingredient amount. Explicit quantities use that ingredient’s unit and must be positive and no greater than its recipe quantity. Existing recipes default to an empty steps list; no database migration is needed. Step links are included in JSON exports.

@@ -1,0 +1,47 @@
+name: Security
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    name: Security scans
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go for Gitleaks
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Install pinned scanners
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.0
+          python3 -m venv "$RUNNER_TEMP/security-venv"
+          "$RUNNER_TEMP/security-venv/bin/pip" install foxguard==0.14.1 zizmor==1.32.0
+          echo "$RUNNER_TEMP/security-venv/bin" >> "$GITHUB_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Scan full Git history for secrets
+        run: gitleaks git --redact --log-opts=--all .
+      - name: Scan working tree for secrets
+        run: |
+          gitleaks dir --redact .
+          foxguard secrets .
+      - name: Audit GitHub Actions
+        run: zizmor --offline --strict-collection --persona=pedantic .github/workflows
+      - name: Scan code for significant security findings
+        run: foxguard --severity high --baseline .foxguard-baseline.json .

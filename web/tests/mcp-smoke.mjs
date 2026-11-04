@@ -13,7 +13,7 @@ const transport = new StreamableHTTPClientTransport(
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 25);
+  assert.equal(tools.length, 27);
   const name = `MCP smoke ${Date.now()}`;
   const r = await client.callTool({
     name: "create_recipe",
@@ -113,7 +113,7 @@ try {
   });
   assert.equal(JSON.parse(cleared.content[0].text).cook_count, 0);
   console.log(
-    "Official MCP SDK: 25 tools; shopping, weekly wishes, recipe ratings, cook history CRUD and averages — passed.",
+    "Official MCP SDK: 27 tools; shopping, weekly wishes, recipe ratings, cook history CRUD and averages — passed.",
   );
 } finally {
   await client.close();

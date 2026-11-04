@@ -121,6 +121,29 @@ pub fn save_recipe(db: &Connection, id: Option<i64>, mut data: RecipeInput) -> R
     for i in &mut data.ingredients {
         validate_ingredient(i)?;
     }
+    if data.steps.len() > 200 {
+        return Err(Error::bad("A recipe supports at most 200 steps"));
+    }
+    for (index, step) in data.steps.iter().enumerate() {
+        text(&step.text, "Step text", 10000)?;
+        if step.after.len() > index || step.after.iter().any(|&n| n >= index) {
+            return Err(Error::bad("Step dependencies must refer to earlier steps"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for usage in &step.ingredients {
+            if usage.ingredient >= data.ingredients.len() || !seen.insert(usage.ingredient) {
+                return Err(Error::bad(
+                    "Step ingredients must reference distinct recipe ingredients",
+                ));
+            }
+            if let Some(amount) = usage.quantity {
+                positive(amount, "Step quantity")?;
+                if amount > data.ingredients[usage.ingredient].quantity {
+                    return Err(Error::bad("Step quantity exceeds recipe quantity"));
+                }
+            }
+        }
+    }
     let json = serde_json::to_string(&data)?;
     let id = if let Some(id) = id {
         if db.execute("UPDATE recipes SET data=? WHERE id=?", params![json, id])? == 0 {

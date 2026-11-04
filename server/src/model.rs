@@ -8,11 +8,27 @@ pub struct Ingredient {
     pub unit: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StepIngredient {
+    pub ingredient: usize,
+    // Omit to use the full recipe amount; set for divided ingredients.
+    pub quantity: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecipeStep {
+    pub text: String,
+    #[serde(default)]
+    pub ingredients: Vec<StepIngredient>,
+    #[serde(default)]
+    pub after: Vec<usize>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecipeInput {
     pub title: String,
     pub servings: f64,
     #[serde(default)]
     pub instructions: String,
+    #[serde(default)]
+    pub steps: Vec<RecipeStep>,
     #[serde(default)]
     pub source_url: String,
     pub ingredients: Vec<Ingredient>,

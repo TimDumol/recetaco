@@ -18,6 +18,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 data class Ingredient(val name: String = "", val quantity: Double = 1.0, val unit: String = "")
 
 @Serializable
+data class StepIngredient(val ingredient: Int, val quantity: Double? = null)
+
+@Serializable
+data class RecipeStep(val text: String, val ingredients: List<StepIngredient> = emptyList(), val after: List<Int> = emptyList())
+
+@Serializable
 data class Recipe(
     val id: Long = 0,
     val title: String = "",
@@ -30,6 +36,7 @@ data class Recipe(
     val cook_count: Long = 0,
     val average_cook_rating: Double? = null,
     val last_cooked: String? = null,
+    val steps: List<RecipeStep> = emptyList(),
 )
 
 @Serializable

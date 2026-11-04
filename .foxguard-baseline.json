@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "fingerprint": "d1b9770fd6612160164289ed3be65d2d231bae17eab451c4f6cd6ac4a459727a",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 413
+    },
+    {
+      "fingerprint": "785d3917328d512de7ad59cdbda799e666a5042da9131ac0ed2771ac8a52f93c",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 606
+    },
+    {
+      "fingerprint": "374fa5f0de6108abba2263185f7aef64b393e0ebf1d6ccc5c358f28a94747bd8",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 842
+    },
+    {
+      "fingerprint": "c3b74ef79a6e147fd3c9cd141e8b2fe9eedf626c5111a6a0723d4da0fd2dacbc",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 862
+    },
+    {
+      "fingerprint": "d9d5543f9b8e662898d351427ebc24d7c868ee8411aaed96a3034d7c8f2574dd",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 939
+    },
+    {
+      "fingerprint": "6282d6f0734fbd57f16846e3ace5eeaebf85dfa7339434fe2262c8003adbdacb",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 958
+    },
+    {
+      "fingerprint": "806cd92e96c0103c0d4da027a54a84b97c4de3f1a76738e50f752bdaeb98fb1f",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 1030
+    },
+    {
+      "fingerprint": "988495749496eb9d237ba53195789a5551c35c26b95890564c81903815709f65",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 1054
+    },
+    {
+      "fingerprint": "e01c9e638efc7f2265a5c03a2ab1adc95ed26819a3dff37415dd8694ceddb1b5",
+      "rule_id": "manifest/cargo-pq-vulnerable-dep",
+      "file": "Cargo.lock",
+      "line": 1335
+    },
+    {
+      "fingerprint": "66d577908f32dabd020d3ab2001357aa878e6c715d676f43db98d267e69159cd",
+      "rule_id": "py/no-ssrf",
+      "file": "scripts/check-deployment.py",
+      "line": 13
+    },
+    {
+      "fingerprint": "0d85492ac4f260f8e358ea32ec46a9b758df8b70cc23fa186d8119282ff7032a",
+      "rule_id": "py/no-ssrf",
+      "file": "scripts/measure-memory.py",
+      "line": 20
+    },
+    {
+      "fingerprint": "2e05be0c0ac8d7d9f184c059a8c8e43e3220c01aed9873622c22a978130d88f0",
+      "rule_id": "py/no-command-injection",
+      "file": "scripts/measure-memory.py",
+      "line": 31
+    },
+    {
+      "fingerprint": "6b7e3e19c34add7a6df9284889bb0a10e035e8babb82c6ea36ca42e9b8b34dd5",
+      "rule_id": "manifest/npm-pq-vulnerable-dep",
+      "file": "web/package-lock.json",
+      "line": 2202
+    },
+    {
+      "fingerprint": "e842db5492044e05c47b7aba995ee42ccac2816ef46c716461eb440a2454b5fc",
+      "rule_id": "js/no-ssrf",
+      "file": "web/src/api.ts",
+      "line": 54
+    },
+    {
+      "fingerprint": "9d98b8fa26219d184f5905f953bd009217b8bc24a3dd7952a133b9f73d4c81e9",
+      "rule_id": "js/no-ssrf",
+      "file": "web/src/photos.tsx",
+      "line": 10
+    },
+    {
+      "fingerprint": "44012ca60ea6234935f2e7519ca11beeeaa734684e589631e955f9c6da90a42f",
+      "rule_id": "js/no-ssrf",
+      "file": "web/src/photos.tsx",
+      "line": 66
+    }
+  ]
+}
